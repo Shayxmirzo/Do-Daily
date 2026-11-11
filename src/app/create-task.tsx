@@ -12,7 +12,23 @@ import {
 } from 'react-native'
 import { SafeAreaView } from 'react-native-safe-area-context'
 import { useTasks } from '../context/task-context'
-import type { TaskCategory } from '../types/task'
+import type { TaskCategory, TaskPriority } from '../types/task'
+
+const WEEKDAYS = ['Пн', 'Вт', 'Ср', 'Чт', 'Пт', 'Сб', 'Вс']
+const MONTHS = [
+  'Январь',
+  'Февраль',
+  'Март',
+  'Апрель',
+  'Май',
+  'Июнь',
+  'Июль',
+  'Август',
+  'Сентябрь',
+  'Октябрь',
+  'Ноябрь',
+  'Декабрь',
+]
 
 const taskTypes = [
   { category: 'health', label: 'Здоровье', icon: 'heart-outline', color: '#18A765', background: '#E8F6EE' },
@@ -20,7 +36,39 @@ const taskTypes = [
   { category: 'personal', label: 'Личное', icon: 'person-outline', color: '#E78A20', background: '#FFF3E5' },
 ] as const
 
+const priorities: {
+  value: TaskPriority
+  label: string
+  color: string
+  background: string
+  icon: 'arrow-down-outline' | 'remove-outline' | 'arrow-up-outline'
+}[] = [
+  { value: 'low', label: 'Низкий', color: '#18A765', background: '#E8F6EE', icon: 'arrow-down-outline' },
+  { value: 'medium', label: 'Средний', color: '#D28A16', background: '#FFF3D9', icon: 'remove-outline' },
+  { value: 'high', label: 'Высокий', color: '#D94B4B', background: '#FDECEC', icon: 'arrow-up-outline' },
+]
+
 type TimeField = 'start' | 'end'
+type DateField = 'start' | 'end'
+
+function getCalendarDays(year: number, month: number) {
+  const firstDay = new Date(year, month, 1)
+  const startDay = (firstDay.getDay() + 6) % 7
+  const lastDay = new Date(year, month + 1, 0).getDate()
+  const days: { date: Date; currentMonth: boolean }[] = []
+
+  for (let offset = startDay; offset > 0; offset -= 1) {
+    days.push({ date: new Date(year, month, 1 - offset), currentMonth: false })
+  }
+  for (let day = 1; day <= lastDay; day += 1) {
+    days.push({ date: new Date(year, month, day), currentMonth: true })
+  }
+  while (days.length < 42) {
+    const day = days.length - startDay - lastDay + 1
+    days.push({ date: new Date(year, month + 1, day), currentMonth: false })
+  }
+  return days
+}
 
 function formatTime(date: Date) {
   return date.toLocaleTimeString('ru-RU', {
@@ -38,15 +86,101 @@ function createTime(date: Date, hour: number, minute: number) {
 export default function CreateTaskScreen() {
   const { addTask, loading, storageError } = useTasks()
   const now = new Date()
+  const defaultEndTime = new Date(now.getTime() + 60 * 60 * 1000)
   const [title, setTitle] = useState('')
   const [description, setDescription] = useState('')
   const [selectedType, setSelectedType] = useState<TaskCategory>('study')
+  const [priority, setPriority] = useState<TaskPriority>('medium')
   const [startTime, setStartTime] = useState(now)
-  const [endTime, setEndTime] = useState(
-    new Date(now.getTime() + 60 * 60 * 1000),
+  const [endTime, setEndTime] = useState(defaultEndTime)
+  const [hasEndDate, setHasEndDate] = useState(
+    defaultEndTime.getFullYear() !== now.getFullYear() ||
+      defaultEndTime.getMonth() !== now.getMonth() ||
+      defaultEndTime.getDate() !== now.getDate(),
+  )
+  const [datePickerVisible, setDatePickerVisible] = useState(false)
+  const [draftDate, setDraftDate] = useState(now)
+  const [dateField, setDateField] = useState<DateField>('start')
+  const [dateMonth, setDateMonth] = useState(
+    () => new Date(now.getFullYear(), now.getMonth(), 1),
   )
   const [timeField, setTimeField] = useState<TimeField | null>(null)
   const [draftTime, setDraftTime] = useState(now)
+  const calendarDays = getCalendarDays(
+    dateMonth.getFullYear(),
+    dateMonth.getMonth(),
+  )
+
+  const openDatePicker = (field: DateField) => {
+    const date = field === 'start' ? startTime : endTime
+    setDateField(field)
+    setDraftDate(date)
+    setDateMonth(new Date(date.getFullYear(), date.getMonth(), 1))
+    setDatePickerVisible(true)
+  }
+
+  const confirmDate = () => {
+    if (dateField === 'start') {
+      const dayDelta =
+        (Date.UTC(
+          draftDate.getFullYear(),
+          draftDate.getMonth(),
+          draftDate.getDate(),
+        ) -
+          Date.UTC(
+            startTime.getFullYear(),
+            startTime.getMonth(),
+            startTime.getDate(),
+          )) /
+        86400000
+      const updatedStart = new Date(draftDate)
+      updatedStart.setHours(startTime.getHours(), startTime.getMinutes(), 0, 0)
+      const updatedEnd = new Date(endTime)
+      updatedEnd.setDate(updatedEnd.getDate() + dayDelta)
+      setStartTime(updatedStart)
+      setEndTime(updatedEnd)
+    } else {
+      const updatedEnd = new Date(draftDate)
+      updatedEnd.setHours(endTime.getHours(), endTime.getMinutes(), 0, 0)
+      const startDay = new Date(
+        startTime.getFullYear(),
+        startTime.getMonth(),
+        startTime.getDate(),
+      )
+      const endDay = new Date(
+        updatedEnd.getFullYear(),
+        updatedEnd.getMonth(),
+        updatedEnd.getDate(),
+      )
+      if (endDay < startDay) {
+        Alert.alert(
+          'Проверьте даты',
+          'Последний день не может быть раньше даты начала.',
+        )
+        return
+      }
+      setEndTime(updatedEnd)
+    }
+    setDatePickerVisible(false)
+  }
+
+  const removeEndDate = () => {
+    const updatedEnd = new Date(endTime)
+    updatedEnd.setFullYear(
+      startTime.getFullYear(),
+      startTime.getMonth(),
+      startTime.getDate(),
+    )
+    if (updatedEnd <= startTime) {
+      Alert.alert(
+        'Проверьте время',
+        'Для задачи на один день время окончания должно быть позже начала.',
+      )
+      return
+    }
+    setEndTime(updatedEnd)
+    setHasEndDate(false)
+  }
 
   const openTimePicker = (field: TimeField) => {
     setTimeField(field)
@@ -82,6 +216,7 @@ export default function CreateTaskScreen() {
         title: trimmedTitle,
         description: description.trim(),
         category: selectedType,
+        priority,
         startAt: startTime.toISOString(),
         endAt: endTime.toISOString(),
       })
@@ -187,6 +322,101 @@ export default function CreateTaskScreen() {
             />
           </View>
 
+          <View style={{ gap: 8 }}>
+            <Text style={{ fontSize: 15, fontWeight: '600', color: '#333' }}>
+              Дата
+            </Text>
+            <Pressable
+              accessibilityRole="button"
+              accessibilityLabel={`Дата задачи: ${startTime.toLocaleDateString('ru-RU')}. Выбрать дату`}
+              onPress={() => openDatePicker('start')}
+              style={{
+                minHeight: 54,
+                flexDirection: 'row',
+                alignItems: 'center',
+                gap: 10,
+                paddingHorizontal: 14,
+                borderRadius: 14,
+                borderWidth: 1,
+                borderColor: '#E8E6ED',
+                backgroundColor: '#FFFFFF',
+              }}
+            >
+              <Ionicons name="calendar-outline" size={19} color="#6C5DD3" />
+              <Text style={{ flex: 1, fontSize: 15, color: '#333' }}>
+                {startTime.toLocaleDateString('ru-RU', {
+                  day: 'numeric',
+                  month: 'long',
+                  year: 'numeric',
+                })}
+              </Text>
+              <Ionicons name="chevron-forward" size={18} color="#A5A2AD" />
+            </Pressable>
+            {hasEndDate ? (
+              <View style={{ flexDirection: 'row', gap: 8 }}>
+                <Pressable
+                  accessibilityRole="button"
+                  accessibilityLabel={`Последний день: ${endTime.toLocaleDateString('ru-RU')}. Выбрать дату`}
+                  onPress={() => openDatePicker('end')}
+                  style={{
+                    flex: 1,
+                    minHeight: 50,
+                    flexDirection: 'row',
+                    alignItems: 'center',
+                    gap: 10,
+                    paddingHorizontal: 14,
+                    borderRadius: 14,
+                    borderWidth: 1,
+                    borderColor: '#E8E6ED',
+                    backgroundColor: '#FFFFFF',
+                  }}
+                >
+                  <Ionicons name="calendar-outline" size={18} color="#6C5DD3" />
+                  <Text style={{ flex: 1, fontSize: 14, color: '#333' }}>
+                    До {endTime.toLocaleDateString('ru-RU', {
+                      day: 'numeric',
+                      month: 'long',
+                      year: 'numeric',
+                    })}
+                  </Text>
+                </Pressable>
+                <Pressable
+                  accessibilityRole="button"
+                  accessibilityLabel="Убрать последний день"
+                  onPress={removeEndDate}
+                  style={{
+                    width: 50,
+                    minHeight: 50,
+                    alignItems: 'center',
+                    justifyContent: 'center',
+                    borderRadius: 14,
+                    backgroundColor: '#F1F0F5',
+                  }}
+                >
+                  <Ionicons name="close" size={19} color="#777" />
+                </Pressable>
+              </View>
+            ) : (
+              <Pressable
+                accessibilityRole="button"
+                onPress={() => setHasEndDate(true)}
+                style={{
+                  alignSelf: 'flex-start',
+                  minHeight: 40,
+                  flexDirection: 'row',
+                  alignItems: 'center',
+                  gap: 7,
+                  paddingHorizontal: 10,
+                }}
+              >
+                <Ionicons name="add-circle-outline" size={18} color="#6C5DD3" />
+                <Text style={{ fontSize: 13, fontWeight: '600', color: '#6C5DD3' }}>
+                  Добавить последний день
+                </Text>
+              </Pressable>
+            )}
+          </View>
+
           <View style={{ gap: 10 }}>
             <Text style={{ fontSize: 15, fontWeight: '600', color: '#333' }}>
               Категория
@@ -222,6 +452,48 @@ export default function CreateTaskScreen() {
                       }}
                     >
                       {type.label}
+                    </Text>
+                  </Pressable>
+                )
+              })}
+            </View>
+          </View>
+
+          <View style={{ gap: 10 }}>
+            <Text style={{ fontSize: 15, fontWeight: '600', color: '#333' }}>
+              Приоритет
+            </Text>
+            <View style={{ flexDirection: 'row', gap: 8 }}>
+              {priorities.map((item) => {
+                const isSelected = priority === item.value
+
+                return (
+                  <Pressable
+                    key={item.value}
+                    accessibilityRole="button"
+                    accessibilityState={{ selected: isSelected }}
+                    onPress={() => setPriority(item.value)}
+                    style={{
+                      flex: 1,
+                      minHeight: 72,
+                      alignItems: 'center',
+                      justifyContent: 'center',
+                      gap: 5,
+                      borderRadius: 14,
+                      borderWidth: isSelected ? 2 : 1,
+                      borderColor: isSelected ? item.color : '#E8E6ED',
+                      backgroundColor: item.background,
+                    }}
+                  >
+                    <Ionicons name={item.icon} size={19} color={item.color} />
+                    <Text
+                      style={{
+                        fontSize: 12,
+                        fontWeight: isSelected ? '700' : '500',
+                        color: item.color,
+                      }}
+                    >
+                      {item.label}
                     </Text>
                   </Pressable>
                 )
@@ -290,6 +562,180 @@ export default function CreateTaskScreen() {
           </Text>
         ) : null}
       </ScrollView>
+
+      <Modal
+        animationType="slide"
+        onRequestClose={() => setDatePickerVisible(false)}
+        transparent
+        visible={datePickerVisible}
+      >
+        <View
+          style={{
+            flex: 1,
+            justifyContent: 'flex-end',
+            backgroundColor: 'rgba(24, 20, 38, 0.4)',
+          }}
+        >
+          <View
+            style={{
+              paddingHorizontal: 20,
+              paddingTop: 22,
+              paddingBottom: 30,
+              borderTopLeftRadius: 24,
+              borderTopRightRadius: 24,
+              backgroundColor: '#FFFFFF',
+            }}
+          >
+            <View
+              style={{
+                flexDirection: 'row',
+                alignItems: 'center',
+                justifyContent: 'space-between',
+                marginBottom: 20,
+              }}
+            >
+              <Pressable
+                accessibilityRole="button"
+                accessibilityLabel="Предыдущий месяц"
+                hitSlop={10}
+                onPress={() =>
+                  setDateMonth(
+                    (current) =>
+                      new Date(current.getFullYear(), current.getMonth() - 1, 1),
+                  )
+                }
+              >
+                <Ionicons name="chevron-back" size={20} color="#6C5DD3" />
+              </Pressable>
+              <Text style={{ fontSize: 17, fontWeight: '700', color: '#222' }}>
+                {dateField === 'start' ? 'Дата задачи · ' : 'Последний день · '}
+                {MONTHS[dateMonth.getMonth()]} {dateMonth.getFullYear()}
+              </Text>
+              <Pressable
+                accessibilityRole="button"
+                accessibilityLabel="Следующий месяц"
+                hitSlop={10}
+                onPress={() =>
+                  setDateMonth(
+                    (current) =>
+                      new Date(current.getFullYear(), current.getMonth() + 1, 1),
+                  )
+                }
+              >
+                <Ionicons name="chevron-forward" size={20} color="#6C5DD3" />
+              </Pressable>
+            </View>
+
+            <View style={{ flexDirection: 'row', marginBottom: 8 }}>
+              {WEEKDAYS.map((day) => (
+                <Text
+                  key={day}
+                  style={{
+                    width: `${100 / 7}%`,
+                    textAlign: 'center',
+                    fontSize: 12,
+                    fontWeight: '600',
+                    color: '#999',
+                  }}
+                >
+                  {day}
+                </Text>
+              ))}
+            </View>
+            <View style={{ flexDirection: 'row', flexWrap: 'wrap' }}>
+              {calendarDays.map(({ date, currentMonth }) => {
+                const isSelected =
+                  date.getFullYear() === draftDate.getFullYear() &&
+                  date.getMonth() === draftDate.getMonth() &&
+                  date.getDate() === draftDate.getDate()
+
+                return (
+                  <Pressable
+                    key={`${date.getFullYear()}-${date.getMonth()}-${date.getDate()}`}
+                    accessibilityRole="button"
+                    accessibilityLabel={date.toLocaleDateString('ru-RU')}
+                    accessibilityState={{ selected: isSelected }}
+                    onPress={() => {
+                      setDraftDate(date)
+                      if (!currentMonth) {
+                        setDateMonth(
+                          new Date(date.getFullYear(), date.getMonth(), 1),
+                        )
+                      }
+                    }}
+                    style={{
+                      width: `${100 / 7}%`,
+                      height: 44,
+                      alignItems: 'center',
+                      justifyContent: 'center',
+                    }}
+                  >
+                    <View
+                      style={{
+                        width: 36,
+                        height: 36,
+                        alignItems: 'center',
+                        justifyContent: 'center',
+                        borderRadius: 12,
+                        backgroundColor: isSelected ? '#7357E8' : 'transparent',
+                      }}
+                    >
+                      <Text
+                        style={{
+                          fontSize: 14,
+                          fontWeight: isSelected ? '700' : '500',
+                          color: isSelected
+                            ? '#FFFFFF'
+                            : currentMonth
+                              ? '#333'
+                              : '#C7C4CE',
+                        }}
+                      >
+                        {date.getDate()}
+                      </Text>
+                    </View>
+                  </Pressable>
+                )
+              })}
+            </View>
+
+            <View style={{ flexDirection: 'row', gap: 12, marginTop: 20 }}>
+              <Pressable
+                accessibilityRole="button"
+                onPress={() => setDatePickerVisible(false)}
+                style={{
+                  flex: 1,
+                  minHeight: 48,
+                  alignItems: 'center',
+                  justifyContent: 'center',
+                  borderRadius: 13,
+                  backgroundColor: '#F1F0F5',
+                }}
+              >
+                <Text style={{ fontSize: 15, fontWeight: '600', color: '#555' }}>
+                  Отмена
+                </Text>
+              </Pressable>
+              <Pressable
+                accessibilityRole="button"
+                onPress={confirmDate}
+                style={{
+                  flex: 1,
+                  minHeight: 48,
+                  alignItems: 'center',
+                  justifyContent: 'center',
+                  borderRadius: 13,
+                  backgroundColor: '#7357E8',
+                }}
+              >
+                <Text style={{ fontSize: 15, fontWeight: '600', color: '#FFF' }}>
+                  Выбрать дату
+                </Text>
+              </Pressable>
+            </View>
+          </View>
+        </View>
+      </Modal>
 
       <Modal
         animationType="slide"

@@ -1,5 +1,7 @@
 export type TaskCategory = 'health' | 'study' | 'personal'
 
+export type TaskPriority = 'low' | 'medium' | 'high'
+
 export type TaskStatus = 'pending' | 'completed' | 'failed'
 
 export type Task = {
@@ -7,6 +9,7 @@ export type Task = {
   title: string
   description: string
   category: TaskCategory
+  priority: TaskPriority
   startAt: string
   endAt: string
   status: TaskStatus
