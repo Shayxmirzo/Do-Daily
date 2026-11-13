@@ -1,4 +1,5 @@
 import Ionicons from '@expo/vector-icons/Ionicons'
+import { router, type Href } from 'expo-router'
 import { useCallback, useEffect, useMemo, useState } from 'react'
 import {
   Alert,
@@ -444,6 +445,17 @@ export default function ProfileScreen() {
               <Text style={[styles.actionText, { color: '#E5484D' }]}>
                 Сбросить все задачи
               </Text>
+            </View>
+            <Ionicons name="chevron-forward" size={18} color="#9E9EB2" />
+          </Pressable>
+
+          <Pressable
+            onPress={() => router.push('/onboarding' as Href)}
+            style={styles.actionRow}
+          >
+            <View style={styles.settingLeft}>
+              <Ionicons name="sparkles-outline" size={22} color="#6C5DD3" />
+              <Text style={styles.actionText}>Посмотреть онбординг</Text>
             </View>
             <Ionicons name="chevron-forward" size={18} color="#9E9EB2" />
           </Pressable>
