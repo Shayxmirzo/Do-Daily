@@ -1,17 +1,29 @@
 import AsyncStorage from '@react-native-async-storage/async-storage'
-import type { NewTask, Task, TaskCategory, TaskStatus } from '../types/task'
+import type {
+  NewTask,
+  Task,
+  TaskCategory,
+  TaskPriority,
+  TaskStatus,
+} from '../types/task'
 
 const tasksKey = 'tasks'
 
+type StoredTask = Omit<Task, 'priority'> & { priority?: TaskPriority }
+
 function isTaskCategory(value: unknown): value is TaskCategory {
   return value === 'health' || value === 'study' || value === 'personal'
+}
+
+function isTaskPriority(value: unknown): value is TaskPriority {
+  return value === 'low' || value === 'medium' || value === 'high'
 }
 
 function isTaskStatus(value: unknown): value is TaskStatus {
   return value === 'pending' || value === 'completed' || value === 'failed'
 }
 
-function isTask(value: unknown): value is Task {
+function isStoredTask(value: unknown): value is StoredTask {
   if (typeof value !== 'object' || value === null) {
     return false
   }
@@ -22,6 +34,7 @@ function isTask(value: unknown): value is Task {
     typeof task.title === 'string' &&
     typeof task.description === 'string' &&
     isTaskCategory(task.category) &&
+    (task.priority === undefined || isTaskPriority(task.priority)) &&
     typeof task.startAt === 'string' &&
     !Number.isNaN(Date.parse(task.startAt)) &&
     typeof task.endAt === 'string' &&
@@ -43,11 +56,11 @@ export async function loadTasks(): Promise<Task[]> {
     throw new Error('Saved tasks could not be read because the stored data is invalid.')
   }
 
-  if (!Array.isArray(parsed) || !parsed.every(isTask)) {
+  if (!Array.isArray(parsed) || !parsed.every(isStoredTask)) {
     throw new Error('Saved tasks could not be read because the stored data has an invalid format.')
   }
 
-  return parsed
+  return parsed.map((task) => ({ ...task, priority: task.priority ?? 'medium' }))
 }
 
 export async function saveTasks(tasks: Task[]): Promise<void> {

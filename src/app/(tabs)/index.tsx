@@ -3,7 +3,7 @@ import { Alert, Pressable, SafeAreaView, ScrollView, StatusBar, Text, View } fro
 import { useState, useEffect } from 'react';
 import { router, type Href } from 'expo-router';
 import { useTasks } from '../../context/task-context'
-import type { TaskCategory, TaskStatus } from '../../types/task'
+import type { TaskCategory, TaskPriority, TaskStatus } from '../../types/task'
 
 const categoryLabels: Record<TaskCategory, string> = {
   health: 'Здоровье',
@@ -11,10 +11,19 @@ const categoryLabels: Record<TaskCategory, string> = {
   personal: 'Личное',
 }
 
-const statusLabels: Record<TaskStatus, string> = {
-  pending: 'В ожидании',
-  completed: 'Выполнена',
-  failed: 'Просрочена',
+const priorityLabels: Record<TaskPriority, string> = {
+  low: 'Низкий',
+  medium: 'Средний',
+  high: 'Высокий',
+}
+
+const priorityColors: Record<
+  TaskPriority,
+  { color: string; background: string }
+> = {
+  low: { color: '#18A765', background: '#E8F6EE' },
+  medium: { color: '#D28A16', background: '#FFF3D9' },
+  high: { color: '#D94B4B', background: '#FDECEC' },
 }
 
 function formatTaskTime(value: string) {
@@ -171,98 +180,125 @@ const handleDeleteTask = (id: string) => {
             {tasks.map((task) => {
               const nextStatus =
                 task.status === 'pending' ? 'completed' : 'pending'
+              const priorityColor = priorityColors[task.priority]
 
               return (
                 <View
                   key={task.id}
                   style={{
-                    padding: 15,
-                    gap: 10,
+                    flexDirection: 'row',
+                    alignItems: 'center',
+                    gap: 12,
+                    padding: 14,
                     borderWidth: 1,
-                    borderColor: '#EEEEEE',
-                    borderRadius: 15,
+                    borderColor: '#F0EFF5',
+                    borderRadius: 18,
                     backgroundColor: '#FFFFFF',
+                    shadowColor: '#211B3A',
+                    shadowOffset: { width: 0, height: 3 },
+                    shadowOpacity: 0.06,
+                    shadowRadius: 8,
+                    elevation: 2,
                   }}
                 >
-                  <View
-                    style={{
-                      flexDirection: 'row',
-                      alignItems: 'center',
-                      justifyContent: 'space-between',
-                      gap: 10,
-                    }}
+                  <Pressable
+                    accessibilityRole="checkbox"
+                    accessibilityState={{ checked: task.status === 'completed' }}
+                    accessibilityLabel={
+                      task.status === 'completed'
+                        ? `Вернуть задачу ${task.title} в активные`
+                        : `Отметить задачу ${task.title} выполненной`
+                    }
+                    onPress={() => handleUpdateStatus(task.id, nextStatus)}
+                    hitSlop={10}
                   >
+                    <Ionicons
+                      name={
+                        task.status === 'completed'
+                          ? 'checkmark-circle'
+                          : 'ellipse-outline'
+                      }
+                      size={25}
+                      color={task.status === 'completed' ? '#6C5DD3' : '#C9C7D1'}
+                    />
+                  </Pressable>
+                  <View style={{ flex: 1, gap: 6 }}>
                     <Text
+                      numberOfLines={1}
                       style={{
-                        flex: 1,
-                        fontSize: 16,
+                        fontSize: 15,
                         fontWeight: '700',
-                        color: '#333',
+                        color: task.status === 'completed' ? '#8C8995' : '#292733',
+                        textDecorationLine:
+                          task.status === 'completed' ? 'line-through' : 'none',
                       }}
                     >
                       {task.title}
                     </Text>
+                    {task.description ? (
+                      <Text
+                        numberOfLines={1}
+                        style={{ fontSize: 12, color: '#898692' }}
+                      >
+                        {task.description}
+                      </Text>
+                    ) : null}
+                    <View
+                      style={{
+                        flexDirection: 'row',
+                        flexWrap: 'wrap',
+                        alignItems: 'center',
+                        gap: 6,
+                      }}
+                    >
+                      <Text style={{ fontSize: 12, color: '#6C5DD3' }}>
+                        {formatTaskTime(task.startAt)}
+                      </Text>
+                      <Text style={{ fontSize: 12, color: '#B5B2BC' }}>·</Text>
+                      <Text style={{ fontSize: 12, color: '#777' }}>
+                        {categoryLabels[task.category]}
+                      </Text>
+                    </View>
+                  </View>
+                  <View style={{ alignItems: 'flex-end', gap: 8 }}>
+                    <View
+                      style={{
+                        paddingHorizontal: 9,
+                        paddingVertical: 4,
+                        borderRadius: 10,
+                        backgroundColor: priorityColor.background,
+                      }}
+                    >
+                      <Text
+                        style={{
+                          fontSize: 11,
+                          fontWeight: '600',
+                          color: priorityColor.color,
+                        }}
+                      >
+                        {priorityLabels[task.priority]}
+                      </Text>
+                    </View>
                     <Pressable
                       accessibilityRole="button"
                       accessibilityLabel={`Удалить задачу ${task.title}`}
                       onPress={() => handleDeleteTask(task.id)}
                       hitSlop={8}
                     >
-                      <Ionicons name="trash-outline" size={20} color="#888" />
+                      <Ionicons
+                        name="trash-outline"
+                        size={18}
+                        color="#AAA7B1"
+                      />
                     </Pressable>
                   </View>
-                  <Text style={{ fontSize: 14, color: '#777' }}>
-                    {task.description || 'Без описания'}
-                  </Text>
-                  <View
-                    style={{
-                      flexDirection: 'row',
-                      flexWrap: 'wrap',
-                      alignItems: 'center',
-                      gap: 8,
-                    }}
-                  >
-                    <Text style={{ fontSize: 13, color: '#6C5DD3' }}>
-                      {categoryLabels[task.category]}
-                    </Text>
-                    <Text style={{ fontSize: 13, color: '#AAA' }}>·</Text>
-                    <Text style={{ fontSize: 13, color: '#777' }}>
-                      {statusLabels[task.status]}
-                    </Text>
-                    <Text style={{ fontSize: 13, color: '#AAA' }}>·</Text>
-                    <Text style={{ fontSize: 13, color: '#777' }}>
-                      {formatTaskTime(task.startAt)}–{formatTaskTime(task.endAt)}
-                    </Text>
-                  </View>
-                  <Pressable
-                    accessibilityRole="button"
-                    onPress={() => handleUpdateStatus(task.id, nextStatus)}
-                    style={{
-                      alignSelf: 'flex-start',
-                      minHeight: 36,
-                      justifyContent: 'center',
-                      paddingHorizontal: 12,
-                      borderRadius: 10,
-                      backgroundColor: '#F0ECFF',
-                    }}
-                  >
-                    <Text
-                      style={{
-                        fontSize: 13,
-                        fontWeight: '600',
-                        color: '#6C5DD3',
-                      }}
-                    >
-                      {task.status === 'pending'
-                        ? 'Отметить выполненной'
-                        : 'Вернуть в активные'}
-                    </Text>
-                  </Pressable>
                 </View>
               )
             })}
           </View>
         </View>
+
+        </ScrollView>
         <Pressable
   onPress={() => router.push('/create-task' as Href)}
   style={{
@@ -274,14 +310,13 @@ const handleDeleteTask = (id: string) => {
     justifyContent: 'center',
     elevation: 5,
     position: 'absolute',
-    bottom: -20,
+    bottom: 10,
     right: 20,
-    zIndex: 300,
+    zIndex: 20,
   }}
 >
   <Ionicons name="add" size={36} color="#FFFFFF" />
         </Pressable>
-        </ScrollView>
     </SafeAreaView>
   )
 }
