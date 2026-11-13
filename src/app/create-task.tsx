@@ -1,5 +1,5 @@
 import Ionicons from '@expo/vector-icons/Ionicons'
-import { router } from 'expo-router'
+import { router, useLocalSearchParams } from 'expo-router'
 import { useState } from 'react'
 import {
   Alert,
@@ -12,7 +12,7 @@ import {
 } from 'react-native'
 import { SafeAreaView } from 'react-native-safe-area-context'
 import { useTasks } from '../context/task-context'
-import type { TaskCategory, TaskPriority } from '../types/task'
+import type { Task, TaskCategory, TaskPriority } from '../types/task'
 
 const WEEKDAYS = ['Пн', 'Вт', 'Ср', 'Чт', 'Пт', 'Сб', 'Вс']
 const MONTHS = [
@@ -84,28 +84,93 @@ function createTime(date: Date, hour: number, minute: number) {
 }
 
 export default function CreateTaskScreen() {
-  const { addTask, loading, storageError } = useTasks()
+  const { taskId } = useLocalSearchParams<{ taskId?: string }>()
+  const { tasks, loading, storageError } = useTasks()
+  if (!taskId) {
+    return <TaskForm key="new-task" />
+  }
+  if (loading) {
+    return <TaskStatusView message="Загрузка задачи…" />
+  }
+  if (storageError) {
+    return <TaskStatusView message={`Не удалось загрузить задачу: ${storageError}`} />
+  }
+
+  const task = tasks.find((item) => item.id === taskId)
+  if (!task) {
+    return <TaskStatusView message="Задача не найдена. Возможно, она была удалена." />
+  }
+
+  return <TaskForm key={task.id} task={task} />
+}
+
+function TaskStatusView({ message }: { message: string }) {
+  return (
+    <SafeAreaView
+      style={{
+        flex: 1,
+        alignItems: 'center',
+        justifyContent: 'center',
+        gap: 12,
+        padding: 24,
+        backgroundColor: '#F8F7FC',
+      }}
+    >
+      <Text style={{ color: '#777', fontSize: 14, textAlign: 'center' }}>
+        {message}
+      </Text>
+      <Pressable
+        accessibilityRole="button"
+        onPress={() => router.back()}
+        style={{
+          minHeight: 44,
+          justifyContent: 'center',
+          paddingHorizontal: 16,
+          borderRadius: 12,
+          backgroundColor: '#EEEAFB',
+        }}
+      >
+        <Text style={{ color: '#6C5DD3', fontWeight: '600' }}>Назад</Text>
+      </Pressable>
+    </SafeAreaView>
+  )
+}
+
+function TaskForm({ task }: { task?: Task }) {
+  const { addTask, updateTask, loading, storageError } = useTasks()
   const now = new Date()
   const defaultEndTime = new Date(now.getTime() + 60 * 60 * 1000)
-  const [title, setTitle] = useState('')
-  const [description, setDescription] = useState('')
-  const [selectedType, setSelectedType] = useState<TaskCategory>('study')
-  const [priority, setPriority] = useState<TaskPriority>('medium')
-  const [startTime, setStartTime] = useState(now)
-  const [endTime, setEndTime] = useState(defaultEndTime)
+  const initialStartTime = task ? new Date(task.startAt) : now
+  const initialEndTime = task ? new Date(task.endAt) : defaultEndTime
+  const [title, setTitle] = useState(task?.title ?? '')
+  const [description, setDescription] = useState(task?.description ?? '')
+  const [selectedType, setSelectedType] = useState<TaskCategory>(
+    task?.category ?? 'study',
+  )
+  const [priority, setPriority] = useState<TaskPriority>(
+    task?.priority ?? 'medium',
+  )
+  const [startTime, setStartTime] = useState(initialStartTime)
+  const [endTime, setEndTime] = useState(initialEndTime)
   const [hasEndDate, setHasEndDate] = useState(
-    defaultEndTime.getFullYear() !== now.getFullYear() ||
-      defaultEndTime.getMonth() !== now.getMonth() ||
-      defaultEndTime.getDate() !== now.getDate(),
+    initialEndTime.getFullYear() !== initialStartTime.getFullYear() ||
+      initialEndTime.getMonth() !== initialStartTime.getMonth() ||
+      initialEndTime.getDate() !== initialStartTime.getDate(),
   )
   const [datePickerVisible, setDatePickerVisible] = useState(false)
-  const [draftDate, setDraftDate] = useState(now)
+  const [draftDate, setDraftDate] = useState(initialStartTime)
   const [dateField, setDateField] = useState<DateField>('start')
   const [dateMonth, setDateMonth] = useState(
-    () => new Date(now.getFullYear(), now.getMonth(), 1),
+    () =>
+      new Date(
+        initialStartTime.getFullYear(),
+        initialStartTime.getMonth(),
+        1,
+      ),
   )
   const [timeField, setTimeField] = useState<TimeField | null>(null)
-  const [draftTime, setDraftTime] = useState(now)
+  const [draftTime, setDraftTime] = useState(initialStartTime)
+  const isEditing = Boolean(task)
   const calendarDays = getCalendarDays(
     dateMonth.getFullYear(),
     dateMonth.getMonth(),
@@ -196,7 +261,7 @@ export default function CreateTaskScreen() {
     setTimeField(null)
   }
 
-  const handleCreateTask = async () => {
+  const handleSaveTask = async () => {
     const trimmedTitle = title.trim()
     if (!trimmedTitle) {
       Alert.alert('Не указано название', 'Введите название задачи.')
@@ -212,18 +277,24 @@ export default function CreateTaskScreen() {
     }
 
     try {
-      await addTask({
+      const taskChanges = {
         title: trimmedTitle,
         description: description.trim(),
         category: selectedType,
         priority,
         startAt: startTime.toISOString(),
         endAt: endTime.toISOString(),
-      })
+      }
+
+      if (task) {
+        await updateTask(task.id, taskChanges)
+      } else {
+        await addTask(taskChanges)
+      }
       router.back()
     } catch (error) {
       Alert.alert(
-        'Не удалось создать задачу',
+        isEditing ? 'Не удалось сохранить задачу' : 'Не удалось создать задачу',
         error instanceof Error ? error.message : 'Произошла ошибка хранилища.',
       )
     }
@@ -246,13 +317,15 @@ export default function CreateTaskScreen() {
         >
           <View style={{ flex: 1, gap: 5 }}>
             <Text style={{ fontSize: 28, fontWeight: '700', color: '#222' }}>
-              Новая задача
+              {isEditing ? 'Редактировать задачу' : 'Новая задача'}
             </Text>
             <Text style={{ fontSize: 14, color: '#777' }}>
-              {`На ${now.toLocaleDateString('ru-RU', {
-                day: 'numeric',
-                month: 'long',
-              })} · запланируйте свой день`}
+              {isEditing
+                ? 'Измените данные задачи'
+                : `На ${now.toLocaleDateString('ru-RU', {
+                    day: 'numeric',
+                    month: 'long',
+                  })} · запланируйте свой день`}
             </Text>
           </View>
           <Pressable
@@ -541,9 +614,11 @@ export default function CreateTaskScreen() {
 
         <Pressable
           accessibilityRole="button"
-          accessibilityState={{ disabled: loading || storageError !== null }}
+          accessibilityState={{
+            disabled: loading || storageError !== null,
+          }}
           disabled={loading || storageError !== null}
-          onPress={handleCreateTask}
+          onPress={handleSaveTask}
           style={{
             minHeight: 54,
             alignItems: 'center',
@@ -553,7 +628,11 @@ export default function CreateTaskScreen() {
           }}
         >
           <Text style={{ fontSize: 16, fontWeight: '600', color: '#FFFFFF' }}>
-            {loading ? 'Загрузка задач…' : 'Создать задачу'}
+            {loading
+              ? 'Загрузка задач…'
+              : isEditing
+                ? 'Сохранить изменения'
+                : 'Создать задачу'}
           </Text>
         </Pressable>
         {storageError ? (

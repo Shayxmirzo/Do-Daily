@@ -10,7 +10,7 @@ import {
 } from 'react-native'
 import { useTasks } from '../../context/task-context'
 import type { TaskCategory } from '../../types/task'
-import { Href, router } from 'expo-router'
+import { router, type Href } from 'expo-router'
 
 const DAYS_SHORT = ['Пн', 'Вт', 'Ср', 'Чт', 'Пт', 'Сб', 'Вс']
 
@@ -346,14 +346,31 @@ export default function CalendarScreen() {
               {task.description ? (
                 <Text style={styles.taskDescription}>{task.description}</Text>
               ) : null}
-              <Text
-                style={[
-                  styles.taskCategory,
-                  { color: CATEGORY_COLORS[task.category] },
-                ]}
-              >
-                {CATEGORY_LABELS[task.category]}
-              </Text>
+              <View style={styles.taskFooter}>
+                <Text
+                  style={[
+                    styles.taskCategory,
+                    { color: CATEGORY_COLORS[task.category] },
+                  ]}
+                >
+                  {CATEGORY_LABELS[task.category]}
+                </Text>
+                <Pressable
+                  accessibilityRole="button"
+                  accessibilityLabel={`Редактировать задачу ${task.title}`}
+                  onPress={() =>
+                    router.push({
+                      pathname: '/create-task',
+                      params: { taskId: task.id },
+                    } as Href)
+                  }
+                  hitSlop={8}
+                  style={styles.editTaskButton}
+                >
+                  <Ionicons name="create-outline" size={18} color="#6C5DD3" />
+                  <Text style={styles.editTaskText}>Изменить</Text>
+                </Pressable>
+              </View>
             </View>
           ))}
       </ScrollView>
@@ -529,8 +546,25 @@ const styles = StyleSheet.create({
     color: '#777',
   },
   taskCategory: {
-    marginTop: 10,
     fontSize: 13,
     fontWeight: '600',
+  },
+  taskFooter: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    marginTop: 10,
+  },
+  editTaskButton: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 5,
+    minHeight: 36,
+    paddingHorizontal: 8,
+  },
+  editTaskText: {
+    fontSize: 13,
+    fontWeight: '600',
+    color: '#6C5DD3',
   },
 })
