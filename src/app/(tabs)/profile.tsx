@@ -13,6 +13,7 @@ import {
   View,
 } from 'react-native'
 import { SafeAreaView } from 'react-native-safe-area-context'
+import { useAuth } from '../../context/auth-context'
 import { useTasks } from '../../context/task-context'
 import {
   defaultUserProfile,
@@ -25,6 +26,7 @@ import { Href, router } from 'expo-router'
 const avatarPresets = ['⚡', '🚀', '🎯', '🦁', '🌟', '🎨', '🧠', '🏆', '☕', '🔥']
 
 export default function ProfileScreen() {
+  const { user, signOut } = useAuth()
   const { tasks, loading: tasksLoading, storageError, deleteTask } = useTasks()
   const [profile, setProfile] = useState<UserProfile>(defaultUserProfile)
   const [isProfileLoading, setIsProfileLoading] = useState(true)
@@ -257,6 +259,19 @@ export default function ProfileScreen() {
     )
   }
 
+  const handleSignOut = () => {
+    Alert.alert('Выйти из аккаунта?', 'Вы сможете войти снова в любое время.', [
+      { text: 'Отмена', style: 'cancel' },
+      {
+        text: 'Выйти',
+        style: 'destructive',
+        onPress: async () => {
+          await signOut()
+        },
+      },
+    ])
+  }
+
   // Reset all tasks
   const handleResetAllTasks = () => {
     if (tasksLoading || storageError) {
@@ -325,7 +340,11 @@ export default function ProfileScreen() {
 
           <View style={styles.userInfoWrap}>
             <Text style={styles.userName}>{profile.name}</Text>
-            {profile.email ? <Text style={styles.userEmail}>{profile.email}</Text> : null}
+            {user?.email ? (
+              <Text style={styles.userEmail}>{user.email}</Text>
+            ) : profile.email ? (
+              <Text style={styles.userEmail}>{profile.email}</Text>
+            ) : null}
             {profile.bio ? <Text style={styles.userBio}>«{profile.bio}»</Text> : null}
           </View>
 
@@ -557,7 +576,7 @@ export default function ProfileScreen() {
 
           <Pressable
             onPress={() => setIsAboutModalOpen(true)}
-            style={[styles.actionRow, { borderBottomWidth: 0 }]}
+            style={styles.actionRow}
           >
             <View style={styles.settingLeft}>
               <Ionicons name="information-circle-outline" size={22} color="#6C5DD3" />
@@ -565,6 +584,34 @@ export default function ProfileScreen() {
             </View>
             <Ionicons name="chevron-forward" size={18} color="#9E9EB2" />
           </Pressable>
+
+          {user ? (
+            <Pressable
+              onPress={handleSignOut}
+              style={[styles.actionRow, { borderBottomWidth: 0 }]}
+            >
+              <View style={styles.settingLeft}>
+                <Ionicons name="log-out-outline" size={22} color="#E5484D" />
+                <Text style={[styles.actionText, { color: '#E5484D' }]}>
+                  Выйти из аккаунта ({user.email})
+                </Text>
+              </View>
+              <Ionicons name="chevron-forward" size={18} color="#9E9EB2" />
+            </Pressable>
+          ) : (
+            <Pressable
+              onPress={() => router.push('/auth/login' as Href)}
+              style={[styles.actionRow, { borderBottomWidth: 0 }]}
+            >
+              <View style={styles.settingLeft}>
+                <Ionicons name="cloud-upload-outline" size={22} color="#6C5DD3" />
+                <Text style={[styles.actionText, { color: '#6C5DD3' }]}>
+                  Войти / Синхронизация с облаком
+                </Text>
+              </View>
+              <Ionicons name="chevron-forward" size={18} color="#9E9EB2" />
+            </Pressable>
+          )}
         </View>
       </ScrollView>
 
