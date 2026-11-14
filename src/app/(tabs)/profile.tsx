@@ -20,6 +20,7 @@ import {
   saveUserProfile,
   type UserProfile,
 } from '../../storage/user-storage'
+import { Href, router } from 'expo-router'
 
 const avatarPresets = ['⚡', '🚀', '🎯', '🦁', '🌟', '🎨', '🧠', '🏆', '☕', '🔥']
 
