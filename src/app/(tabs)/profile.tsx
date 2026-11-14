@@ -1,6 +1,5 @@
 import Ionicons from '@expo/vector-icons/Ionicons'
-import { router, type Href } from 'expo-router'
-import { useCallback, useEffect, useMemo, useState } from 'react'
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import {
   Alert,
   Modal,
@@ -25,10 +24,13 @@ import {
 const avatarPresets = ['⚡', '🚀', '🎯', '🦁', '🌟', '🎨', '🧠', '🏆', '☕', '🔥']
 
 export default function ProfileScreen() {
-  const { tasks, deleteTask } = useTasks()
+  const { tasks, loading: tasksLoading, storageError, deleteTask } = useTasks()
   const [profile, setProfile] = useState<UserProfile>(defaultUserProfile)
+  const [isProfileLoading, setIsProfileLoading] = useState(true)
+  const [isSavingProfile, setIsSavingProfile] = useState(false)
   const [isEditModalOpen, setIsEditModalOpen] = useState(false)
   const [isAboutModalOpen, setIsAboutModalOpen] = useState(false)
+  const profileSaveInProgressRef = useRef(false)
 
   // Edit form state
   const [draftName, setDraftName] = useState('')
@@ -38,9 +40,31 @@ export default function ProfileScreen() {
 
   // Load persisted user profile on mount
   useEffect(() => {
-    loadUserProfile().then((loaded) => {
-      setProfile(loaded)
-    })
+    let active = true
+
+    loadUserProfile()
+      .then((loaded) => {
+        if (active) {
+          setProfile(loaded)
+        }
+      })
+      .catch((error: unknown) => {
+        if (active) {
+          Alert.alert(
+            'Не удалось загрузить профиль',
+            error instanceof Error ? error.message : 'Произошла ошибка хранилища.',
+          )
+        }
+      })
+      .finally(() => {
+        if (active) {
+          setIsProfileLoading(false)
+        }
+      })
+
+    return () => {
+      active = false
+    }
   }, [])
 
   // User statistics based on tasks
@@ -114,12 +138,38 @@ export default function ProfileScreen() {
 
   // Open edit modal and preload fields
   const handleOpenEdit = () => {
+    if (isProfileLoading || isSavingProfile) {
+      return
+    }
     setDraftName(profile.name)
     setDraftEmail(profile.email)
     setDraftBio(profile.bio)
     setDraftEmoji(profile.avatarEmoji)
     setIsEditModalOpen(true)
   }
+
+  const saveProfileUpdate = useCallback(async (updated: UserProfile) => {
+    if (profileSaveInProgressRef.current) {
+      return false
+    }
+
+    profileSaveInProgressRef.current = true
+    setIsSavingProfile(true)
+    try {
+      await saveUserProfile(updated)
+      setProfile(updated)
+      return true
+    } catch (error) {
+      Alert.alert(
+        'Не удалось сохранить профиль',
+        error instanceof Error ? error.message : 'Произошла ошибка хранилища.',
+      )
+      return false
+    } finally {
+      profileSaveInProgressRef.current = false
+      setIsSavingProfile(false)
+    }
+  }, [])
 
   // Save updated profile
   const handleSaveProfile = async () => {
@@ -131,38 +181,46 @@ export default function ProfileScreen() {
       bio: draftBio.trim(),
       avatarEmoji: draftEmoji,
     }
-    setProfile(updated)
-    await saveUserProfile(updated)
-    setIsEditModalOpen(false)
+    if (await saveProfileUpdate(updated)) {
+      setIsEditModalOpen(false)
+    }
   }
 
   // Toggle notification preference
   const handleToggleNotifications = async (val: boolean) => {
     const updated = { ...profile, notificationsEnabled: val }
-    setProfile(updated)
-    await saveUserProfile(updated)
+    await saveProfileUpdate(updated)
   }
 
   // Toggle sound preference
   const handleToggleSounds = async (val: boolean) => {
     const updated = { ...profile, soundsEnabled: val }
-    setProfile(updated)
-    await saveUserProfile(updated)
+    await saveProfileUpdate(updated)
   }
 
   // Adjust daily goal
   const handleAdjustGoal = useCallback(
     async (delta: number) => {
       const newGoal = Math.max(1, Math.min(30, profile.dailyGoal + delta))
+      if (newGoal === profile.dailyGoal) {
+        return
+      }
       const updated = { ...profile, dailyGoal: newGoal }
-      setProfile(updated)
-      await saveUserProfile(updated)
+      await saveProfileUpdate(updated)
     },
-    [profile],
+    [profile, saveProfileUpdate],
   )
 
   // Clear completed tasks
   const handleClearCompleted = () => {
+    if (tasksLoading || storageError) {
+      Alert.alert(
+        'Задачи недоступны',
+        storageError ?? 'Дождитесь загрузки задач и попробуйте снова.',
+      )
+      return
+    }
+
     const completedList = tasks.filter((t) => t.status === 'completed')
     if (completedList.length === 0) {
       Alert.alert('Нет задач', 'У вас нет завершённых задач для очистки.')
@@ -178,8 +236,19 @@ export default function ProfileScreen() {
           text: 'Очистить',
           style: 'destructive',
           onPress: async () => {
-            for (const t of completedList) {
-              await deleteTask(t.id)
+            try {
+              for (const t of completedList) {
+                await deleteTask(t.id)
+              }
+            } catch (error) {
+              Alert.alert(
+                'Не удалось очистить задачи',
+                `Некоторые задачи могли остаться в списке. ${
+                  error instanceof Error
+                    ? error.message
+                    : 'Произошла ошибка хранилища.'
+                }`,
+              )
             }
           },
         },
@@ -189,6 +258,14 @@ export default function ProfileScreen() {
 
   // Reset all tasks
   const handleResetAllTasks = () => {
+    if (tasksLoading || storageError) {
+      Alert.alert(
+        'Задачи недоступны',
+        storageError ?? 'Дождитесь загрузки задач и попробуйте снова.',
+      )
+      return
+    }
+
     if (tasks.length === 0) {
       Alert.alert('Нет задач', 'Список задач уже пуст.')
       return
@@ -203,8 +280,19 @@ export default function ProfileScreen() {
           text: 'Удалить всё',
           style: 'destructive',
           onPress: async () => {
-            for (const t of tasks) {
-              await deleteTask(t.id)
+            try {
+              for (const t of tasks) {
+                await deleteTask(t.id)
+              }
+            } catch (error) {
+              Alert.alert(
+                'Не удалось удалить задачи',
+                `Некоторые задачи могли остаться в списке. ${
+                  error instanceof Error
+                    ? error.message
+                    : 'Произошла ошибка хранилища.'
+                }`,
+              )
             }
           },
         },
@@ -227,6 +315,7 @@ export default function ProfileScreen() {
               accessibilityRole="button"
               accessibilityLabel="Сменить эмодзи аватара"
               onPress={handleOpenEdit}
+              disabled={isProfileLoading || isSavingProfile}
               style={styles.avatarEditBadge}
             >
               <Ionicons name="pencil" size={14} color="#FFFFFF" />
@@ -242,6 +331,7 @@ export default function ProfileScreen() {
           <Pressable
             accessibilityRole="button"
             onPress={handleOpenEdit}
+            disabled={isProfileLoading || isSavingProfile}
             style={styles.editProfileButton}
           >
             <Ionicons name="create-outline" size={16} color="#6C5DD3" />
@@ -374,6 +464,7 @@ export default function ProfileScreen() {
                 style={styles.goalBtn}
                 accessibilityRole="button"
                 accessibilityLabel="Уменьшить дневную цель"
+                disabled={isProfileLoading || isSavingProfile}
               >
                 <Ionicons name="remove" size={20} color="#6C5DD3" />
               </Pressable>
@@ -383,6 +474,7 @@ export default function ProfileScreen() {
                 style={styles.goalBtn}
                 accessibilityRole="button"
                 accessibilityLabel="Увеличить дневную цель"
+                disabled={isProfileLoading || isSavingProfile}
               >
                 <Ionicons name="add" size={20} color="#6C5DD3" />
               </Pressable>
@@ -405,6 +497,7 @@ export default function ProfileScreen() {
             <Switch
               value={profile.notificationsEnabled}
               onValueChange={handleToggleNotifications}
+              disabled={isProfileLoading || isSavingProfile}
               trackColor={{ false: '#D4D2E3', true: '#B7ACF7' }}
               thumbColor={profile.notificationsEnabled ? '#6C5DD3' : '#F4F3F9'}
             />
@@ -421,6 +514,7 @@ export default function ProfileScreen() {
             <Switch
               value={profile.soundsEnabled}
               onValueChange={handleToggleSounds}
+              disabled={isProfileLoading || isSavingProfile}
               trackColor={{ false: '#D4D2E3', true: '#B7ACF7' }}
               thumbColor={profile.soundsEnabled ? '#6C5DD3' : '#F4F3F9'}
             />
@@ -487,6 +581,7 @@ export default function ProfileScreen() {
               <Pressable
                 onPress={() => setIsEditModalOpen(false)}
                 hitSlop={10}
+                disabled={isSavingProfile}
               >
                 <Ionicons name="close" size={24} color="#717382" />
               </Pressable>
@@ -506,6 +601,7 @@ export default function ProfileScreen() {
                     <Pressable
                       key={emoji}
                       onPress={() => setDraftEmoji(emoji)}
+                      disabled={isSavingProfile}
                       style={[styles.emojiPill, selected && styles.emojiPillSelected]}
                     >
                       <Text style={styles.emojiText}>{emoji}</Text>
@@ -520,6 +616,7 @@ export default function ProfileScreen() {
                 style={styles.textInput}
                 value={draftName}
                 onChangeText={setDraftName}
+                editable={!isSavingProfile}
                 placeholder="Как вас зовут?"
                 placeholderTextColor="#A1A4B5"
               />
@@ -530,6 +627,7 @@ export default function ProfileScreen() {
                 style={styles.textInput}
                 value={draftEmail}
                 onChangeText={setDraftEmail}
+                editable={!isSavingProfile}
                 placeholder="example@mail.com"
                 placeholderTextColor="#A1A4B5"
                 autoCapitalize="none"
@@ -542,6 +640,7 @@ export default function ProfileScreen() {
                 style={[styles.textInput, styles.textArea]}
                 value={draftBio}
                 onChangeText={setDraftBio}
+                editable={!isSavingProfile}
                 placeholder="Напишите короткую мотивирующую фразу..."
                 placeholderTextColor="#A1A4B5"
                 multiline
@@ -554,11 +653,16 @@ export default function ProfileScreen() {
               <Pressable
                 onPress={() => setIsEditModalOpen(false)}
                 style={styles.cancelModalBtn}
+                disabled={isSavingProfile}
               >
                 <Text style={styles.cancelModalBtnText}>Отмена</Text>
               </Pressable>
 
-              <Pressable onPress={handleSaveProfile} style={styles.saveModalBtn}>
+              <Pressable
+                onPress={handleSaveProfile}
+                style={styles.saveModalBtn}
+                disabled={isSavingProfile}
+              >
                 <Text style={styles.saveModalBtnText}>Сохранить</Text>
               </Pressable>
             </View>
@@ -573,8 +677,8 @@ export default function ProfileScreen() {
         transparent={true}
         onRequestClose={() => setIsAboutModalOpen(false)}
       >
-        <View style={styles.modalOverlay}>
-          <View style={[styles.modalContent, { maxWidth: 360 }]}>
+        <View style={styles.aboutModalOverlay}>
+          <View style={styles.aboutModalContent}>
             <View style={styles.aboutCenter}>
               <View style={styles.aboutAppIcon}>
                 <Ionicons name="checkbox" size={42} color="#6C5DD3" />
@@ -931,12 +1035,27 @@ const styles = StyleSheet.create({
     backgroundColor: 'rgba(0, 0, 0, 0.45)',
     justifyContent: 'flex-end',
   },
+  aboutModalOverlay: {
+    flex: 1,
+    backgroundColor: 'rgba(0, 0, 0, 0.45)',
+    alignItems: 'center',
+    justifyContent: 'center',
+    paddingHorizontal: 24,
+  },
   modalContent: {
     backgroundColor: '#FFFFFF',
     borderTopLeftRadius: 28,
     borderTopRightRadius: 28,
     padding: 24,
     maxHeight: '85%',
+    gap: 18,
+  },
+  aboutModalContent: {
+    backgroundColor: '#FFFFFF',
+    borderRadius: 24,
+    padding: 24,
+    width: '100%',
+    maxWidth: 360,
     gap: 18,
   },
   modalHeader: {

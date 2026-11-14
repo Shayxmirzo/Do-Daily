@@ -114,7 +114,6 @@ const handleDeleteTask = (id: string) => {
               })}
             </Text>
           </View>
-          <Ionicons  name="chevron-down" size={30} color="#777" style={{ position: 'absolute', right: 20, top: '50%',      }} />
         </View>
         <View style={{flexDirection: "row", flex: 1, gap: 12}}>
           <View style={{ flex: 1, alignItems: 'center', justifyContent: 'center', gap: 8, padding: 8, backgroundColor: '#FFFFFF', borderWidth: 1, borderColor: '#EEEEEE', borderRadius: 15, shadowColor: '#000000', shadowOffset: { width: 0, height: 2 }, shadowOpacity: 0.1, shadowRadius: 4, elevation: 4 }}>
@@ -141,7 +140,7 @@ const handleDeleteTask = (id: string) => {
         <View>
           <View style={{flexDirection: "row", alignItems: "flex-end", justifyContent: "space-between"}}>
             <Text style={{fontSize: 24, fontWeight: 'bold'}}>Мои задачи</Text>
-            <Pressable>
+            <Pressable onPress={() => router.push('/(tabs)/categories' as Href)}>
               <Text style={{fontSize: 20, fontWeight: 'bold', color: "gray"}}>
                 Все {'>'}
               </Text>
@@ -279,18 +278,33 @@ const handleDeleteTask = (id: string) => {
                         {priorityLabels[task.priority]}
                       </Text>
                     </View>
-                    <Pressable
-                      accessibilityRole="button"
-                      accessibilityLabel={`Удалить задачу ${task.title}`}
-                      onPress={() => handleDeleteTask(task.id)}
-                      hitSlop={8}
-                    >
-                      <Ionicons
-                        name="trash-outline"
-                        size={18}
-                        color="#AAA7B1"
-                      />
-                    </Pressable>
+                    <View style={{ flexDirection: 'row', alignItems: 'center', gap: 12 }}>
+                      <Pressable
+                        accessibilityRole="button"
+                        accessibilityLabel={`Редактировать задачу ${task.title}`}
+                        onPress={() =>
+                          router.push({
+                            pathname: '/create-task',
+                            params: { taskId: task.id },
+                          } as Href)
+                        }
+                        hitSlop={8}
+                      >
+                        <Ionicons name="create-outline" size={18} color="#6C5DD3" />
+                      </Pressable>
+                      <Pressable
+                        accessibilityRole="button"
+                        accessibilityLabel={`Удалить задачу ${task.title}`}
+                        onPress={() => handleDeleteTask(task.id)}
+                        hitSlop={8}
+                      >
+                        <Ionicons
+                          name="trash-outline"
+                          size={18}
+                          color="#AAA7B1"
+                        />
+                      </Pressable>
+                    </View>
                   </View>
                 </View>
               )

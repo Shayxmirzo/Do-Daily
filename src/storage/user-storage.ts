@@ -23,23 +23,49 @@ export const defaultUserProfile: UserProfile = {
 }
 
 export async function loadUserProfile(): Promise<UserProfile> {
-  try {
-    const raw = await AsyncStorage.getItem(USER_PROFILE_KEY)
-    if (!raw) {
-      return defaultUserProfile
-    }
-    const parsed = JSON.parse(raw) as Partial<UserProfile>
-    return {
-      name: typeof parsed.name === 'string' && parsed.name.trim() ? parsed.name : defaultUserProfile.name,
-      email: typeof parsed.email === 'string' ? parsed.email : defaultUserProfile.email,
-      bio: typeof parsed.bio === 'string' ? parsed.bio : defaultUserProfile.bio,
-      avatarEmoji: typeof parsed.avatarEmoji === 'string' ? parsed.avatarEmoji : defaultUserProfile.avatarEmoji,
-      dailyGoal: typeof parsed.dailyGoal === 'number' && parsed.dailyGoal > 0 ? parsed.dailyGoal : defaultUserProfile.dailyGoal,
-      notificationsEnabled: typeof parsed.notificationsEnabled === 'boolean' ? parsed.notificationsEnabled : defaultUserProfile.notificationsEnabled,
-      soundsEnabled: typeof parsed.soundsEnabled === 'boolean' ? parsed.soundsEnabled : defaultUserProfile.soundsEnabled,
-    }
-  } catch {
+  const raw = await AsyncStorage.getItem(USER_PROFILE_KEY)
+  if (!raw) {
     return defaultUserProfile
+  }
+
+  let parsed: unknown
+  try {
+    parsed = JSON.parse(raw)
+  } catch {
+    throw new Error('Saved profile could not be read because the stored data is invalid.')
+  }
+
+  if (typeof parsed !== 'object' || parsed === null || Array.isArray(parsed)) {
+    throw new Error('Saved profile could not be read because the stored data has an invalid format.')
+  }
+
+  const savedProfile = parsed as Partial<UserProfile>
+  const dailyGoal = savedProfile.dailyGoal
+  return {
+    name: typeof savedProfile.name === 'string' && savedProfile.name.trim()
+      ? savedProfile.name
+      : defaultUserProfile.name,
+    email: typeof savedProfile.email === 'string'
+      ? savedProfile.email
+      : defaultUserProfile.email,
+    bio: typeof savedProfile.bio === 'string'
+      ? savedProfile.bio
+      : defaultUserProfile.bio,
+    avatarEmoji: typeof savedProfile.avatarEmoji === 'string'
+      ? savedProfile.avatarEmoji
+      : defaultUserProfile.avatarEmoji,
+    dailyGoal: typeof dailyGoal === 'number' &&
+      Number.isInteger(dailyGoal) &&
+      dailyGoal >= 1 &&
+      dailyGoal <= 30
+      ? dailyGoal
+      : defaultUserProfile.dailyGoal,
+    notificationsEnabled: typeof savedProfile.notificationsEnabled === 'boolean'
+      ? savedProfile.notificationsEnabled
+      : defaultUserProfile.notificationsEnabled,
+    soundsEnabled: typeof savedProfile.soundsEnabled === 'boolean'
+      ? savedProfile.soundsEnabled
+      : defaultUserProfile.soundsEnabled,
   }
 }
 

@@ -51,6 +51,19 @@ function TabsLayout() {
         }}
       />
       <Tabs.Screen
+        name="categories"
+        options={{
+          title: 'Категории',
+          tabBarIcon: ({ color, focused }) => (
+            <Ionicons
+              size={24}
+              color={typeof color === 'number' ? '#8E91A4' : color ?? '#8E91A4'}
+              name={focused ? 'grid' : 'grid-outline'}
+            />
+          ),
+        }}
+      />
+      <Tabs.Screen
         name="statistic"
         options={{
           title: 'Статистика',
