@@ -1,7 +1,30 @@
-import { Tabs } from 'expo-router'
+import { Redirect, Tabs, type Href } from 'expo-router'
 import Ionicons from '@expo/vector-icons/Ionicons'
+import { ActivityIndicator, View } from 'react-native'
+import { useAuth } from '../../context/auth-context'
 
 function TabsLayout() {
+  const { user, loading } = useAuth()
+
+  if (loading) {
+    return (
+      <View
+        style={{
+          flex: 1,
+          justifyContent: 'center',
+          alignItems: 'center',
+          backgroundColor: '#FAF9FE',
+        }}
+      >
+        <ActivityIndicator size="large" color="#6C5DD3" />
+      </View>
+    )
+  }
+
+  if (!user) {
+    return <Redirect href={'/auth/login' as Href} />
+  }
+
   return (
     <Tabs
       screenOptions={{

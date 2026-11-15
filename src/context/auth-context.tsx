@@ -65,7 +65,20 @@ export function AuthProvider({ children }: PropsWithChildren) {
         email: email.trim(),
         password,
       })
-      return { error: error ? new Error(error.message) : null }
+      if (error) {
+        // Map Supabase error messages to user-friendly Russian
+        let message = error.message
+        if (error.message.includes('Invalid login credentials')) {
+          message = 'Неверный email или пароль. Проверьте данные и попробуйте снова.'
+        } else if (error.message.includes('Email not confirmed')) {
+          message =
+            'Email не подтверждён. Проверьте почту и перейдите по ссылке для подтверждения.'
+        } else if (error.message.includes('Too many requests')) {
+          message = 'Слишком много попыток. Подождите немного и попробуйте снова.'
+        }
+        return { error: new Error(message) }
+      }
+      return { error: null }
     } catch (err) {
       return {
         error: err instanceof Error ? err : new Error('Ошибка при входе в аккаунт.'),

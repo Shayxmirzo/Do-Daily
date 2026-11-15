@@ -46,8 +46,8 @@ export default function RegisterScreen() {
     } else {
       Alert.alert(
         'Успешная регистрация! 🎉',
-        'Ваш аккаунт создан. Вы можете войти и начать планировать день.',
-        [{ text: 'Отлично', onPress: () => router.replace('/(tabs)' as Href) }],
+        'Аккаунт создан. Теперь войдите с вашими данными.',
+        [{ text: 'Войти', onPress: () => router.replace('/auth/login' as Href) }],
       )
     }
   }

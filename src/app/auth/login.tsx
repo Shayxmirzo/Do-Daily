@@ -42,10 +42,6 @@ export default function LoginScreen() {
     }
   }
 
-  const handleSkip = () => {
-    router.replace('/(tabs)' as Href)
-  }
-
   return (
     <SafeAreaView edges={['top', 'bottom']} style={styles.container}>
       <StatusBar barStyle="dark-content" />
@@ -138,11 +134,6 @@ export default function LoginScreen() {
                   </>
                 )}
               </LinearGradient>
-            </Pressable>
-
-            {/* Guest button */}
-            <Pressable onPress={handleSkip} style={styles.guestBtn}>
-              <Text style={styles.guestBtnText}>Продолжить без аккаунта (локально)</Text>
             </Pressable>
           </View>
 
