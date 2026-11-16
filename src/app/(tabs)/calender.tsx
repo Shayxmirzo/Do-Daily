@@ -1,6 +1,7 @@
 import Ionicons from '@expo/vector-icons/Ionicons'
-import { useEffect, useMemo, useState } from 'react'
+import { useCallback, useEffect, useMemo, useState } from 'react'
 import {
+  RefreshControl,
   ScrollView,
   StyleSheet,
   Text,
@@ -125,13 +126,23 @@ function formatTaskSchedule(startAt: string, endAt: string) {
 }
 
 export default function CalendarScreen() {
-  const { tasks, loading, storageError } = useTasks()
+  const { tasks, loading, storageError, refreshTasks } = useTasks()
   const [selectedDate, setSelectedDate] = useState(() => new Date())
   const [currentTime, setCurrentTime] = useState(() => Date.now())
+  const [refreshing, setRefreshing] = useState(false)
   const [visibleMonth, setVisibleMonth] = useState(() => {
     const today = new Date()
     return { year: today.getFullYear(), month: today.getMonth() }
   })
+
+  const onRefresh = useCallback(async () => {
+    setRefreshing(true)
+    try {
+      await refreshTasks()
+    } finally {
+      setRefreshing(false)
+    }
+  }, [refreshTasks])
 
   useEffect(() => {
     const interval = setInterval(() => setCurrentTime(Date.now()), 60_000)
@@ -222,6 +233,14 @@ export default function CalendarScreen() {
     <View style={styles.screen}>
       <ScrollView
         showsVerticalScrollIndicator={false}
+        refreshControl={
+          <RefreshControl
+            refreshing={refreshing}
+            onRefresh={onRefresh}
+            colors={['#7B6FE8']}
+            tintColor="#7B6FE8"
+          />
+        }
         contentContainerStyle={styles.scroll}
       >
         <View style={styles.calCard}>

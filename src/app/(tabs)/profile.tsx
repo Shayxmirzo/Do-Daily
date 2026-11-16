@@ -4,6 +4,7 @@ import {
   Alert,
   Modal,
   Pressable,
+  RefreshControl,
   ScrollView,
   StatusBar,
   StyleSheet,
@@ -27,13 +28,26 @@ const avatarPresets = ['⚡', '🚀', '🎯', '🦁', '🌟', '🎨', '🧠', '�
 
 export default function ProfileScreen() {
   const { user, signOut } = useAuth()
-  const { tasks, loading: tasksLoading, storageError, deleteTask } = useTasks()
+  const { tasks, loading: tasksLoading, storageError, deleteTask, refreshTasks } = useTasks()
   const [profile, setProfile] = useState<UserProfile>(defaultUserProfile)
   const [isProfileLoading, setIsProfileLoading] = useState(true)
   const [isSavingProfile, setIsSavingProfile] = useState(false)
+  const [refreshing, setRefreshing] = useState(false)
   const [isEditModalOpen, setIsEditModalOpen] = useState(false)
   const [isAboutModalOpen, setIsAboutModalOpen] = useState(false)
   const profileSaveInProgressRef = useRef(false)
+
+  const onRefresh = useCallback(async () => {
+    setRefreshing(true)
+    try {
+      await Promise.all([
+        refreshTasks(),
+        loadUserProfile(user).then((loaded) => setProfile(loaded)),
+      ])
+    } finally {
+      setRefreshing(false)
+    }
+  }, [refreshTasks, user])
 
   // Edit form state
   const [draftName, setDraftName] = useState('')
@@ -45,7 +59,7 @@ export default function ProfileScreen() {
   useEffect(() => {
     let active = true
 
-    loadUserProfile()
+    loadUserProfile(user)
       .then((loaded) => {
         if (active) {
           setProfile(loaded)
@@ -68,7 +82,7 @@ export default function ProfileScreen() {
     return () => {
       active = false
     }
-  }, [])
+  }, [user])
 
   // User statistics based on tasks
   const completedTasks = useMemo(
@@ -159,7 +173,7 @@ export default function ProfileScreen() {
     profileSaveInProgressRef.current = true
     setIsSavingProfile(true)
     try {
-      await saveUserProfile(updated)
+      await saveUserProfile(updated, user)
       setProfile(updated)
       return true
     } catch (error) {
@@ -172,7 +186,7 @@ export default function ProfileScreen() {
       profileSaveInProgressRef.current = false
       setIsSavingProfile(false)
     }
-  }, [])
+  }, [user])
 
   // Save updated profile
   const handleSaveProfile = async () => {
@@ -321,6 +335,14 @@ export default function ProfileScreen() {
       <StatusBar barStyle="dark-content" />
       <ScrollView
         showsVerticalScrollIndicator={false}
+        refreshControl={
+          <RefreshControl
+            refreshing={refreshing}
+            onRefresh={onRefresh}
+            colors={['#6C5DD3']}
+            tintColor="#6C5DD3"
+          />
+        }
         contentContainerStyle={styles.scrollContent}
       >
         {/* User Card Header */}

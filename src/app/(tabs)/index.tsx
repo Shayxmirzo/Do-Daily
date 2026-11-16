@@ -1,8 +1,19 @@
 import Ionicons from '@expo/vector-icons/Ionicons'
-import { Alert, Pressable, SafeAreaView, ScrollView, StatusBar, Text, View } from 'react-native'
-import { useState, useEffect } from 'react';
-import { router, type Href } from 'expo-router';
+import {
+  Alert,
+  Pressable,
+  RefreshControl,
+  SafeAreaView,
+  ScrollView,
+  StatusBar,
+  Text,
+  View,
+} from 'react-native'
+import { useState, useEffect, useCallback } from 'react'
+import { router, type Href } from 'expo-router'
+import { useAuth } from '../../context/auth-context'
 import { useTasks } from '../../context/task-context'
+import { loadUserProfile } from '../../storage/user-storage'
 import type { TaskCategory, TaskPriority, TaskStatus } from '../../types/task'
 
 const categoryLabels: Record<TaskCategory, string> = {
@@ -34,20 +45,49 @@ function formatTaskTime(value: string) {
 }
 
 function Index() {
-  const [time, setTime] = useState(new Date());
-  const { tasks, loading, storageError, updateTask, deleteTask } = useTasks()
-  useEffect(() => {
-  const interval = setInterval(() => {
-    setTime(new Date());
-  }, 60000);
+  const [time, setTime] = useState(new Date())
+  const { user } = useAuth()
+  const { tasks, loading, storageError, updateTask, deleteTask, refreshTasks } = useTasks()
+  const [userName, setUserName] = useState<string>('')
+  const [refreshing, setRefreshing] = useState(false)
 
-  return () => clearInterval(interval);
-}, []);
-const currentDate = time.toLocaleDateString('ru-RU', {
-  day: 'numeric',
-  month: 'long',
-  weekday: 'long',
-});
+  useEffect(() => {
+    let isMounted = true
+    loadUserProfile(user).then((p) => {
+      if (isMounted) {
+        const name = p.name || user?.user_metadata?.name || user?.email?.split('@')[0] || 'Друг'
+        setUserName(name)
+      }
+    })
+    return () => {
+      isMounted = false
+    }
+  }, [user])
+
+  const onRefresh = useCallback(async () => {
+    setRefreshing(true)
+    try {
+      await refreshTasks()
+      const p = await loadUserProfile(user)
+      const name = p.name || user?.user_metadata?.name || user?.email?.split('@')[0] || 'Друг'
+      setUserName(name)
+    } finally {
+      setRefreshing(false)
+    }
+  }, [refreshTasks, user])
+
+  useEffect(() => {
+    const interval = setInterval(() => {
+      setTime(new Date())
+    }, 60000)
+
+    return () => clearInterval(interval)
+  }, [])
+  const currentDate = time.toLocaleDateString('ru-RU', {
+    day: 'numeric',
+    month: 'long',
+    weekday: 'long',
+  })
 
 const completedTasks = tasks.filter((task) => task.status === 'completed').length
 const remainingTasks = tasks.filter(
@@ -92,15 +132,26 @@ const handleDeleteTask = (id: string) => {
     <SafeAreaView style={{ flex: 1, backgroundColor: '#ffff' }}>
         <StatusBar barStyle="dark-content" />
         <ScrollView
-        showsVerticalScrollIndicator={false}
-        contentContainerStyle={{ padding: 20, gap: 24, paddingBottom: 110, position: 'relative' }}>
+          showsVerticalScrollIndicator={false}
+          refreshControl={
+            <RefreshControl
+              refreshing={refreshing}
+              onRefresh={onRefresh}
+              colors={['#6C5DD3']}
+              tintColor="#6C5DD3"
+            />
+          }
+          contentContainerStyle={{ padding: 20, gap: 24, paddingBottom: 110, position: 'relative' }}
+        >
         <View style={{ paddingHorizontal: 0,paddingTop: 40, paddingVertical: 15, flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center'}}>
             <Text style={{fontSize: 30, fontWeight: "bold"}}>Do-Daily</Text>
            <Ionicons name="notifications-outline" size={30} color="#333" />
         </View>
         <View style={{gap: 8}}>
-            <Text style={{fontSize: 24, fontWeight: 'bold'}}>Привет! UserName</Text>
-            <Text style={{fontSize: 16,color: "#777", fontWeight: "semibold"}}>Давайте сделаем этот день продуктивным!</Text>
+            <Text style={{fontSize: 24, fontWeight: 'bold'}}>
+              Привет, {userName || (user?.email ? user.email.split('@')[0] : 'Друг')}! 👋
+            </Text>
+            <Text style={{fontSize: 16,color: "#777", fontWeight: "600"}}>Давайте сделаем этот день продуктивным!</Text>
         </View>
         <View style={{flexDirection:"row", position: "relative", padding: 14, alignItems: "center", gap: 14, paddingVertical: 15, width: "100%", backgroundColor: "white", borderWidth: 1, borderColor: "black", borderRadius: 15,}}>
           <Ionicons name='calendar-outline' size={30} color={"#6C5DD3"}/>
