@@ -1,4 +1,5 @@
 import AsyncStorage from '@react-native-async-storage/async-storage'
+import { supabase } from '../api/supabase'
 
 export type UserProfile = {
   name: string
@@ -12,6 +13,20 @@ export type UserProfile = {
 
 const USER_PROFILE_KEY = 'user_profile'
 
+interface SupabaseProfileRow {
+  name: string
+  email: string | null
+  bio: string | null
+  avatar_emoji: string
+  daily_goal: number
+  notifications_enabled: boolean
+  sounds_enabled: boolean
+}
+
+function getUserProfileKey(userId?: string): string {
+  return userId ? `${USER_PROFILE_KEY}:${userId}` : USER_PROFILE_KEY
+}
+
 export const defaultUserProfile: UserProfile = {
   name: 'Алексей Смирнов',
   email: 'alex.daily@example.com',
@@ -22,8 +37,7 @@ export const defaultUserProfile: UserProfile = {
   soundsEnabled: true,
 }
 
-export async function loadUserProfile(): Promise<UserProfile> {
-  const raw = await AsyncStorage.getItem(USER_PROFILE_KEY)
+function parseUserProfile(raw: string | null): UserProfile {
   if (!raw) {
     return defaultUserProfile
   }
@@ -69,8 +83,75 @@ export async function loadUserProfile(): Promise<UserProfile> {
   }
 }
 
-export async function saveUserProfile(profile: UserProfile): Promise<void> {
-  await AsyncStorage.setItem(USER_PROFILE_KEY, JSON.stringify(profile))
+function mapSupabaseProfile(row: SupabaseProfileRow): UserProfile {
+  return {
+    name: row.name,
+    email: row.email ?? '',
+    bio: row.bio ?? '',
+    avatarEmoji: row.avatar_emoji,
+    dailyGoal: row.daily_goal,
+    notificationsEnabled: row.notifications_enabled,
+    soundsEnabled: row.sounds_enabled,
+  }
+}
+
+export async function loadUserProfile(userId?: string): Promise<UserProfile> {
+  if (!userId) {
+    return parseUserProfile(await AsyncStorage.getItem(getUserProfileKey()))
+  }
+
+  const { data, error } = await supabase
+    .from('profiles')
+    .select(
+      'name, email, bio, avatar_emoji, daily_goal, notifications_enabled, sounds_enabled',
+    )
+    .eq('id', userId)
+    .maybeSingle()
+
+  if (error) {
+    throw new Error(`Could not load profile from Supabase: ${error.message}`)
+  }
+  if (!data) {
+    throw new Error('No Supabase profile exists for the signed-in user.')
+  }
+
+  const profile = mapSupabaseProfile(data as SupabaseProfileRow)
+  await AsyncStorage.setItem(getUserProfileKey(userId), JSON.stringify(profile))
+  return profile
+}
+
+export async function saveUserProfile(
+  profile: UserProfile,
+  userId?: string,
+): Promise<void> {
+  if (userId) {
+    const { data, error } = await supabase
+      .from('profiles')
+      .update({
+        name: profile.name,
+        email: profile.email,
+        bio: profile.bio,
+        avatar_emoji: profile.avatarEmoji,
+        daily_goal: profile.dailyGoal,
+        notifications_enabled: profile.notificationsEnabled,
+        sounds_enabled: profile.soundsEnabled,
+      })
+      .eq('id', userId)
+      .select('id')
+      .maybeSingle()
+
+    if (error) {
+      throw new Error(`Could not save profile to Supabase: ${error.message}`)
+    }
+    if (!data) {
+      throw new Error('No Supabase profile exists for the signed-in user.')
+    }
+  }
+
+  await AsyncStorage.setItem(
+    getUserProfileKey(userId),
+    JSON.stringify(profile),
+  )
 }
 
 export async function resetUserProfile(): Promise<UserProfile> {

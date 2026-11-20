@@ -5,6 +5,7 @@ import { router, type Href } from 'expo-router'
 import * as SplashScreen from 'expo-splash-screen'
 import { StatusBar } from 'expo-status-bar'
 import { useCallback, useEffect, useState } from 'react'
+import { supabase } from '../api/supabase'
 import {
   Animated,
   Dimensions,
@@ -38,14 +39,22 @@ export default function SplashScreenComponent() {
     // Hide native splash once React component is mounted
     SplashScreen.hideAsync().catch(() => {})
 
-    // Check onboarding status in storage
-    AsyncStorage.getItem('has_seen_onboarding')
-      .then((val) => {
-        const nextRoute = val === 'true' ? ('/(tabs)' as Href) : ('/onboarding' as Href)
-        setDestination(nextRoute)
+    // Check onboarding status and auth session
+    Promise.all([
+      AsyncStorage.getItem('has_seen_onboarding'),
+      supabase.auth.getSession(),
+    ])
+      .then(([seenOnboarding, { data }]) => {
+        if (seenOnboarding !== 'true') {
+          setDestination('/onboarding' as Href)
+        } else if (!data.session?.user) {
+          setDestination('/auth/login' as Href)
+        } else {
+          setDestination('/(tabs)' as Href)
+        }
       })
       .catch(() => {
-        setDestination('/onboarding' as Href)
+        setDestination('/auth/login' as Href)
       })
 
     // Start entrance animations

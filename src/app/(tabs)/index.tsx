@@ -1,5 +1,6 @@
 import Ionicons from '@expo/vector-icons/Ionicons'
-import { Alert, Pressable, SafeAreaView, ScrollView, StatusBar, Text, View } from 'react-native'
+import { SafeAreaView } from 'react-native-safe-area-context'
+import { Alert, Pressable, ScrollView, StatusBar, Text, View } from 'react-native'
 import { useState, useEffect } from 'react';
 import { router, type Href } from 'expo-router';
 import { useTasks } from '../../context/task-context'
@@ -99,7 +100,7 @@ const handleDeleteTask = (id: string) => {
            <Ionicons name="notifications-outline" size={30} color="#333" />
         </View>
         <View style={{gap: 8}}>
-            <Text style={{fontSize: 24, fontWeight: 'bold'}}>Привет! UserName</Text>
+            <Text style={{fontSize: 24, fontWeight: 'bold'}}>Привет!</Text>
             <Text style={{fontSize: 16,color: "#777", fontWeight: "semibold"}}>Давайте сделаем этот день продуктивным!</Text>
         </View>
         <View style={{flexDirection:"row", position: "relative", padding: 14, alignItems: "center", gap: 14, paddingVertical: 15, width: "100%", backgroundColor: "white", borderWidth: 1, borderColor: "black", borderRadius: 15,}}>

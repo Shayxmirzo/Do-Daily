@@ -2,7 +2,8 @@ import { useTasks } from '@/context/task-context'
 import type { TaskCategory, TaskPriority, TaskStatus } from '../../types/task'
 import Ionicons from "@expo/vector-icons/Ionicons"
 import { router, type Href } from "expo-router"
-import { Alert, Modal, Pressable, SafeAreaView, ScrollView, StatusBar, Text, View } from "react-native"
+import { SafeAreaView } from 'react-native-safe-area-context'
+import { Alert, Modal, Pressable, ScrollView, StatusBar, Text, View } from "react-native"
 import { useState } from 'react'
 
 type CategoryFilter = TaskCategory | 'all'

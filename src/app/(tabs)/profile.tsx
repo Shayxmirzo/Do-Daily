@@ -1,5 +1,4 @@
 import Ionicons from '@expo/vector-icons/Ionicons'
-import { router, type Href } from 'expo-router'
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import {
   Alert,
@@ -14,6 +13,7 @@ import {
   View,
 } from 'react-native'
 import { SafeAreaView } from 'react-native-safe-area-context'
+import { useAuth } from '../../context/auth-context'
 import { useTasks } from '../../context/task-context'
 import {
   defaultUserProfile,
@@ -21,13 +21,24 @@ import {
   saveUserProfile,
   type UserProfile,
 } from '../../storage/user-storage'
+import { router, type Href } from 'expo-router'
 
 const avatarPresets = ['⚡', '🚀', '🎯', '🦁', '🌟', '🎨', '🧠', '🏆', '☕', '🔥']
 
 export default function ProfileScreen() {
+  const { user, loading: authLoading, signOut } = useAuth()
+  const userId = user?.id
   const { tasks, loading: tasksLoading, storageError, deleteTask } = useTasks()
-  const [profile, setProfile] = useState<UserProfile>(defaultUserProfile)
-  const [isProfileLoading, setIsProfileLoading] = useState(true)
+  const [profileState, setProfileState] = useState<{
+    userId: string | null
+    profile: UserProfile
+  } | null>(null)
+  const profile =
+    profileState?.userId === (userId ?? null)
+      ? profileState.profile
+      : defaultUserProfile
+  const isProfileLoading =
+    authLoading || profileState?.userId !== (userId ?? null)
   const [isSavingProfile, setIsSavingProfile] = useState(false)
   const [isEditModalOpen, setIsEditModalOpen] = useState(false)
   const [isAboutModalOpen, setIsAboutModalOpen] = useState(false)
@@ -43,30 +54,35 @@ export default function ProfileScreen() {
   useEffect(() => {
     let active = true
 
-    loadUserProfile()
+    if (authLoading) {
+      return () => {
+        active = false
+      }
+    }
+
+    loadUserProfile(userId)
       .then((loaded) => {
         if (active) {
-          setProfile(loaded)
+          setProfileState({ userId: userId ?? null, profile: loaded })
         }
       })
       .catch((error: unknown) => {
         if (active) {
+          setProfileState({
+            userId: userId ?? null,
+            profile: defaultUserProfile,
+          })
           Alert.alert(
             'Не удалось загрузить профиль',
             error instanceof Error ? error.message : 'Произошла ошибка хранилища.',
           )
         }
       })
-      .finally(() => {
-        if (active) {
-          setIsProfileLoading(false)
-        }
-      })
 
     return () => {
       active = false
     }
-  }, [])
+  }, [authLoading, userId])
 
   // User statistics based on tasks
   const completedTasks = useMemo(
@@ -149,28 +165,31 @@ export default function ProfileScreen() {
     setIsEditModalOpen(true)
   }
 
-  const saveProfileUpdate = useCallback(async (updated: UserProfile) => {
-    if (profileSaveInProgressRef.current) {
-      return false
-    }
+  const saveProfileUpdate = useCallback(
+    async (updated: UserProfile) => {
+      if (profileSaveInProgressRef.current) {
+        return false
+      }
 
-    profileSaveInProgressRef.current = true
-    setIsSavingProfile(true)
-    try {
-      await saveUserProfile(updated)
-      setProfile(updated)
-      return true
-    } catch (error) {
-      Alert.alert(
-        'Не удалось сохранить профиль',
-        error instanceof Error ? error.message : 'Произошла ошибка хранилища.',
-      )
-      return false
-    } finally {
-      profileSaveInProgressRef.current = false
-      setIsSavingProfile(false)
-    }
-  }, [])
+      profileSaveInProgressRef.current = true
+      setIsSavingProfile(true)
+      try {
+        await saveUserProfile(updated, userId)
+        setProfileState({ userId: userId ?? null, profile: updated })
+        return true
+      } catch (error) {
+        Alert.alert(
+          'Не удалось сохранить профиль',
+          error instanceof Error ? error.message : 'Произошла ошибка хранилища.',
+        )
+        return false
+      } finally {
+        profileSaveInProgressRef.current = false
+        setIsSavingProfile(false)
+      }
+    },
+    [userId],
+  )
 
   // Save updated profile
   const handleSaveProfile = async () => {
@@ -257,6 +276,19 @@ export default function ProfileScreen() {
     )
   }
 
+  const handleSignOut = () => {
+    Alert.alert('Выйти из аккаунта?', 'Вы сможете войти снова в любое время.', [
+      { text: 'Отмена', style: 'cancel' },
+      {
+        text: 'Выйти',
+        style: 'destructive',
+        onPress: async () => {
+          await signOut()
+        },
+      },
+    ])
+  }
+
   // Reset all tasks
   const handleResetAllTasks = () => {
     if (tasksLoading || storageError) {
@@ -325,7 +357,11 @@ export default function ProfileScreen() {
 
           <View style={styles.userInfoWrap}>
             <Text style={styles.userName}>{profile.name}</Text>
-            {profile.email ? <Text style={styles.userEmail}>{profile.email}</Text> : null}
+            {user?.email ? (
+              <Text style={styles.userEmail}>{user.email}</Text>
+            ) : profile.email ? (
+              <Text style={styles.userEmail}>{profile.email}</Text>
+            ) : null}
             {profile.bio ? <Text style={styles.userBio}>«{profile.bio}»</Text> : null}
           </View>
 
@@ -557,7 +593,7 @@ export default function ProfileScreen() {
 
           <Pressable
             onPress={() => setIsAboutModalOpen(true)}
-            style={[styles.actionRow, { borderBottomWidth: 0 }]}
+            style={styles.actionRow}
           >
             <View style={styles.settingLeft}>
               <Ionicons name="information-circle-outline" size={22} color="#6C5DD3" />
@@ -565,6 +601,34 @@ export default function ProfileScreen() {
             </View>
             <Ionicons name="chevron-forward" size={18} color="#9E9EB2" />
           </Pressable>
+
+          {user ? (
+            <Pressable
+              onPress={handleSignOut}
+              style={[styles.actionRow, { borderBottomWidth: 0 }]}
+            >
+              <View style={styles.settingLeft}>
+                <Ionicons name="log-out-outline" size={22} color="#E5484D" />
+                <Text style={[styles.actionText, { color: '#E5484D' }]}>
+                  Выйти из аккаунта ({user.email})
+                </Text>
+              </View>
+              <Ionicons name="chevron-forward" size={18} color="#9E9EB2" />
+            </Pressable>
+          ) : (
+            <Pressable
+              onPress={() => router.push('/auth/login' as Href)}
+              style={[styles.actionRow, { borderBottomWidth: 0 }]}
+            >
+              <View style={styles.settingLeft}>
+                <Ionicons name="cloud-upload-outline" size={22} color="#6C5DD3" />
+                <Text style={[styles.actionText, { color: '#6C5DD3' }]}>
+                  Войти / Синхронизация с облаком
+                </Text>
+              </View>
+              <Ionicons name="chevron-forward" size={18} color="#9E9EB2" />
+            </Pressable>
+          )}
         </View>
       </ScrollView>
 

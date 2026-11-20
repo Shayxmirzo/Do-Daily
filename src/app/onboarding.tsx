@@ -1,7 +1,7 @@
 import Ionicons from '@expo/vector-icons/Ionicons'
 import AsyncStorage from '@react-native-async-storage/async-storage'
 import { LinearGradient } from 'expo-linear-gradient'
-import { router } from 'expo-router'
+import { router, type Href } from 'expo-router'
 import { useRef, useState } from 'react'
 import {
   Dimensions,
@@ -83,7 +83,7 @@ export default function OnboardingScreen() {
     } catch {
       // ignore storage errors
     }
-    router.replace('/(tabs)')
+    router.replace('/auth/login' as Href)
   }
 
   const handleNext = () => {
