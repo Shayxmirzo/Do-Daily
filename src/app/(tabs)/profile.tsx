@@ -18,12 +18,8 @@ import { SafeAreaView } from 'react-native-safe-area-context'
 import { AppLogo } from '../../components/app-logo'
 import { useAuth } from '../../context/auth-context'
 import { useTasks } from '../../context/task-context'
-import {
-  defaultUserProfile,
-  loadUserProfile,
-  saveUserProfile,
-  type UserProfile,
-} from '../../storage/user-storage'
+import { useUserProfile } from '../../context/user-profile-context'
+import type { UserProfile } from '../../storage/user-storage'
 import { router, type Href } from 'expo-router'
 
 const avatarPresets = ['⚡', '🚀', '🎯', '🦁', '🌟', '🎨', '🧠', '🏆', '☕', '🔥']
@@ -31,8 +27,13 @@ const avatarPresets = ['⚡', '🚀', '🎯', '🦁', '🌟', '🎨', '🧠', '�
 export default function ProfileScreen() {
   const { user, signOut } = useAuth()
   const { tasks, loading: tasksLoading, storageError, deleteTask, refreshTasks } = useTasks()
-  const [profile, setProfile] = useState<UserProfile>(defaultUserProfile)
-  const [isProfileLoading, setIsProfileLoading] = useState(true)
+  const {
+    profile,
+    loading: isProfileLoading,
+    error: profileError,
+    refreshProfile,
+    saveProfile,
+  } = useUserProfile()
   const [isSavingProfile, setIsSavingProfile] = useState(false)
   const [refreshing, setRefreshing] = useState(false)
   const [isEditModalOpen, setIsEditModalOpen] = useState(false)
@@ -44,12 +45,12 @@ export default function ProfileScreen() {
     try {
       await Promise.all([
         refreshTasks(),
-        loadUserProfile(user).then((loaded) => setProfile(loaded)),
+        refreshProfile(),
       ])
     } finally {
       setRefreshing(false)
     }
-  }, [refreshTasks, user])
+  }, [refreshTasks, refreshProfile])
 
   // Edit form state
   const [draftName, setDraftName] = useState('')
@@ -57,35 +58,11 @@ export default function ProfileScreen() {
   const [draftBio, setDraftBio] = useState('')
   const [draftEmoji, setDraftEmoji] = useState('⚡')
 
-  // Load persisted user profile on mount
   useEffect(() => {
-    let active = true
-
-    loadUserProfile(user)
-      .then((loaded) => {
-        if (active) {
-          setProfile(loaded)
-        }
-      })
-      .catch((error: unknown) => {
-        if (active) {
-          setProfile(defaultUserProfile)
-          Alert.alert(
-            'Не удалось загрузить профиль',
-            error instanceof Error ? error.message : 'Произошла ошибка хранилища.',
-          )
-        }
-      })
-      .finally(() => {
-        if (active) {
-          setIsProfileLoading(false)
-        }
-      })
-
-    return () => {
-      active = false
+    if (profileError) {
+      Alert.alert('Не удалось загрузить профиль', profileError)
     }
-  }, [user])
+  }, [profileError])
 
   // User statistics based on tasks
   const completedTasks = useMemo(
@@ -177,8 +154,7 @@ export default function ProfileScreen() {
     profileSaveInProgressRef.current = true
     setIsSavingProfile(true)
     try {
-      await saveUserProfile(updated, user)
-      setProfile(updated)
+      await saveProfile(updated)
       return true
     } catch (error) {
       Alert.alert(
@@ -190,7 +166,7 @@ export default function ProfileScreen() {
       profileSaveInProgressRef.current = false
       setIsSavingProfile(false)
     }
-  }, [user])
+  }, [saveProfile])
 
   // Save updated profile
   const handleSaveProfile = async () => {

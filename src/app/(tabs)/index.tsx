@@ -16,7 +16,7 @@ import { SafeAreaView } from 'react-native-safe-area-context'
 import { AppLogo } from '../../components/app-logo'
 import { useAuth } from '../../context/auth-context'
 import { useTasks } from '../../context/task-context'
-import { loadUserProfile } from '../../storage/user-storage'
+import { useUserProfile } from '../../context/user-profile-context'
 import type { TaskCategory, TaskPriority, TaskStatus } from '../../types/task'
 
 const DAYS_SHORT = ['Пн', 'Вт', 'Ср', 'Чт', 'Пт', 'Сб', 'Вс']
@@ -101,41 +101,17 @@ function Index() {
   })
   const { user } = useAuth()
   const { tasks, loading, storageError, updateTask, deleteTask, refreshTasks } = useTasks()
-  const [userName, setUserName] = useState<string>('')
+  const { profile, loading: profileLoading, refreshProfile } = useUserProfile()
   const [refreshing, setRefreshing] = useState(false)
-
-  useEffect(() => {
-    let isMounted = true
-    loadUserProfile(user).then((profile) => {
-      if (isMounted) {
-        const name =
-          profile.name ||
-          user?.user_metadata?.name ||
-          user?.email?.split('@')[0] ||
-          'Друг'
-        setUserName(name)
-      }
-    })
-    return () => {
-      isMounted = false
-    }
-  }, [user])
 
   const onRefresh = useCallback(async () => {
     setRefreshing(true)
     try {
-      await refreshTasks()
-      const profile = await loadUserProfile(user)
-      const name =
-        profile.name ||
-        user?.user_metadata?.name ||
-        user?.email?.split('@')[0] ||
-        'Друг'
-      setUserName(name)
+      await Promise.all([refreshTasks(), refreshProfile()])
     } finally {
       setRefreshing(false)
     }
-  }, [refreshTasks, user])
+  }, [refreshTasks, refreshProfile])
 
   useEffect(() => {
     const interval = setInterval(() => {
@@ -249,8 +225,9 @@ function Index() {
     { label: 'Просрочено', value: overdueTasks, icon: 'alert-circle', color: '#D94B4B' },
   ] as const
 
-  const userGreeting =
-    userName || (user?.email ? user.email.split('@')[0] : 'Друг')
+  const userGreeting = profileLoading
+    ? user?.user_metadata?.name || user?.email?.split('@')[0] || 'Друг'
+    : profile.name || user?.user_metadata?.name || user?.email?.split('@')[0] || 'Друг'
   const selectedDateLabel = selectedDate.toLocaleDateString('ru-RU', {
     day: 'numeric',
     month: 'long',
@@ -811,7 +788,7 @@ const styles = StyleSheet.create({
   },
   taskSide: {
     alignItems: 'flex-end',
-    gap: 9,
+    gap: 4,
   },
   priorityBadge: {
     paddingHorizontal: 8,

@@ -7,9 +7,46 @@ import type {
   TaskStatus,
 } from '../types/task'
 
-const tasksKey = 'tasks'
+const tasksKeyPrefix = '@do-daily/tasks'
+const legacyTasksKey = 'tasks'
+const taskScopeMigrationKey = '@do-daily/task-scope-migration-v1'
 
 type StoredTask = Omit<Task, 'priority'> & { priority?: TaskPriority }
+
+function getTasksKey(userId?: string | null): string {
+  return userId
+    ? `${tasksKeyPrefix}:user:${userId}`
+    : `${tasksKeyPrefix}:guest`
+}
+
+let taskScopeMigration: Promise<void> | null = null
+
+async function migrateLegacyTasks(): Promise<void> {
+  const migrationComplete = await AsyncStorage.getItem(taskScopeMigrationKey)
+  if (migrationComplete === 'true') return
+
+  const legacyTasks = await AsyncStorage.getItem(legacyTasksKey)
+  if (legacyTasks !== null) {
+    const guestTasksKey = getTasksKey()
+    const guestTasks = await AsyncStorage.getItem(guestTasksKey)
+    if (guestTasks === null) {
+      await AsyncStorage.setItem(guestTasksKey, legacyTasks)
+    }
+    await AsyncStorage.removeItem(legacyTasksKey)
+  }
+
+  await AsyncStorage.setItem(taskScopeMigrationKey, 'true')
+}
+
+async function ensureTaskScopeMigration(): Promise<void> {
+  if (!taskScopeMigration) {
+    taskScopeMigration = migrateLegacyTasks().catch((error: unknown) => {
+      taskScopeMigration = null
+      throw error
+    })
+  }
+  await taskScopeMigration
+}
 
 function isTaskCategory(value: unknown): value is TaskCategory {
   return value === 'health' || value === 'study' || value === 'personal'
@@ -43,8 +80,9 @@ function isStoredTask(value: unknown): value is StoredTask {
   )
 }
 
-export async function loadTasks(): Promise<Task[]> {
-  const savedTasks = await AsyncStorage.getItem(tasksKey)
+export async function loadTasks(userId?: string | null): Promise<Task[]> {
+  await ensureTaskScopeMigration()
+  const savedTasks = await AsyncStorage.getItem(getTasksKey(userId))
   if (savedTasks === null) {
     return []
   }
@@ -63,26 +101,34 @@ export async function loadTasks(): Promise<Task[]> {
   return parsed.map((task) => ({ ...task, priority: task.priority ?? 'medium' }))
 }
 
-export async function saveTasks(tasks: Task[]): Promise<void> {
-  await AsyncStorage.setItem(tasksKey, JSON.stringify(tasks))
+export async function saveTasks(
+  tasks: Task[],
+  userId?: string | null,
+): Promise<void> {
+  await ensureTaskScopeMigration()
+  await AsyncStorage.setItem(getTasksKey(userId), JSON.stringify(tasks))
 }
 
-export async function addSavedTask(task: Task): Promise<Task[]> {
-  const savedTasks = await loadTasks()
+export async function addSavedTask(
+  task: Task,
+  userId?: string | null,
+): Promise<Task[]> {
+  const savedTasks = await loadTasks(userId)
   if (savedTasks.some((savedTask) => savedTask.id === task.id)) {
     throw new Error(`A task with ID "${task.id}" already exists.`)
   }
 
   const updatedTasks = [...savedTasks, task]
-  await saveTasks(updatedTasks)
+  await saveTasks(updatedTasks, userId)
   return updatedTasks
 }
 
 export async function updateSavedTask(
   id: string,
   changes: Partial<Omit<Task, 'id'>>,
+  userId?: string | null,
 ): Promise<Task[]> {
-  const tasks = await loadTasks()
+  const tasks = await loadTasks(userId)
   const taskIndex = tasks.findIndex((task) => task.id === id)
   if (taskIndex === -1) {
     throw new Error(`Task "${id}" was not found.`)
@@ -91,15 +137,18 @@ export async function updateSavedTask(
   const updatedTasks = tasks.map((task) =>
     task.id === id ? { ...task, ...changes } : task,
   )
-  await saveTasks(updatedTasks)
+  await saveTasks(updatedTasks, userId)
   return updatedTasks
 }
 
-export async function deleteSavedTask(id: string): Promise<Task[]> {
-  const tasks = await loadTasks()
+export async function deleteSavedTask(
+  id: string,
+  userId?: string | null,
+): Promise<Task[]> {
+  const tasks = await loadTasks(userId)
   const updatedTasks = tasks.filter((task) => task.id !== id)
   if (updatedTasks.length !== tasks.length) {
-    await saveTasks(updatedTasks)
+    await saveTasks(updatedTasks, userId)
   }
   return updatedTasks
 }

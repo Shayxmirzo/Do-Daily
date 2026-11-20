@@ -14,7 +14,44 @@ export type UserProfile = {
   streak?: number
 }
 
-const USER_PROFILE_KEY = 'user_profile'
+const USER_PROFILE_KEY_PREFIX = 'user_profile'
+const LEGACY_USER_PROFILE_KEY = 'user_profile'
+const USER_PROFILE_MIGRATION_KEY = '@do-daily/user-profile-scope-migration-v1'
+
+function getUserProfileKey(user?: User | null): string {
+  return user?.id
+    ? `${USER_PROFILE_KEY_PREFIX}:${user.id}`
+    : `${USER_PROFILE_KEY_PREFIX}:guest`
+}
+
+let profileScopeMigration: Promise<void> | null = null
+
+async function migrateLegacyUserProfile(): Promise<void> {
+  const migrationComplete = await AsyncStorage.getItem(USER_PROFILE_MIGRATION_KEY)
+  if (migrationComplete === 'true') return
+
+  const legacyProfile = await AsyncStorage.getItem(LEGACY_USER_PROFILE_KEY)
+  if (legacyProfile !== null) {
+    const guestProfileKey = getUserProfileKey()
+    const guestProfile = await AsyncStorage.getItem(guestProfileKey)
+    if (guestProfile === null) {
+      await AsyncStorage.setItem(guestProfileKey, legacyProfile)
+    }
+    await AsyncStorage.removeItem(LEGACY_USER_PROFILE_KEY)
+  }
+
+  await AsyncStorage.setItem(USER_PROFILE_MIGRATION_KEY, 'true')
+}
+
+async function ensureProfileScopeMigration(): Promise<void> {
+  if (!profileScopeMigration) {
+    profileScopeMigration = migrateLegacyUserProfile().catch((error: unknown) => {
+      profileScopeMigration = null
+      throw error
+    })
+  }
+  await profileScopeMigration
+}
 
 export const defaultUserProfile: UserProfile = {
   name: 'Пользователь',
@@ -29,10 +66,12 @@ export const defaultUserProfile: UserProfile = {
 }
 
 export async function loadUserProfile(user?: User | null): Promise<UserProfile> {
-  let profile = defaultUserProfile
+  await ensureProfileScopeMigration()
+  const userProfileKey = getUserProfileKey(user)
+  let profile = { ...defaultUserProfile }
 
   // 1. Read local cache first
-  const raw = await AsyncStorage.getItem(USER_PROFILE_KEY)
+  const raw = await AsyncStorage.getItem(userProfileKey)
   if (raw) {
     try {
       const parsed = JSON.parse(raw) as Partial<UserProfile>
@@ -89,10 +128,18 @@ export async function loadUserProfile(user?: User | null): Promise<UserProfile> 
           xp: data.xp ?? profile.xp,
           streak: data.streak ?? profile.streak,
         }
-        await AsyncStorage.setItem(USER_PROFILE_KEY, JSON.stringify(profile))
+        await AsyncStorage.setItem(userProfileKey, JSON.stringify(profile))
+      } else if (error) {
+        console.warn(
+          '[ProfileSync] Could not fetch profile; using its local cache:',
+          error.message,
+        )
       }
-    } catch {
-      // Network/offline error: stay with cached profile
+    } catch (error) {
+      console.warn(
+        '[ProfileSync] Could not fetch profile; using its local cache:',
+        error instanceof Error ? error.message : 'Unexpected profile fetch error.',
+      )
     }
   }
 
@@ -101,15 +148,15 @@ export async function loadUserProfile(user?: User | null): Promise<UserProfile> 
 
 export async function saveUserProfile(profile: UserProfile, user?: User | null): Promise<void> {
   // Save locally
-  await AsyncStorage.setItem(USER_PROFILE_KEY, JSON.stringify(profile))
+  await ensureProfileScopeMigration()
+  await AsyncStorage.setItem(getUserProfileKey(user), JSON.stringify(profile))
 
   // Sync to Supabase if logged in
   if (user?.id) {
     try {
-      await supabase
+      const { data, error } = await supabase
         .from('profiles')
-        .upsert({
-          id: user.id,
+        .update({
           name: profile.name,
           email: profile.email || user.email,
           bio: profile.bio,
@@ -119,14 +166,31 @@ export async function saveUserProfile(profile: UserProfile, user?: User | null):
           sounds_enabled: profile.soundsEnabled,
           updated_at: new Date().toISOString(),
         })
-    } catch {
-      // Ignore network sync error, local changes are preserved
+        .eq('id', user.id)
+        .select('id')
+        .maybeSingle()
+      if (error) {
+        console.warn(
+          '[ProfileSync] Cloud save failed; profile was saved locally:',
+          error.message,
+        )
+      } else if (!data) {
+        console.warn(
+          '[ProfileSync] Cloud save skipped; no profile row exists for this account.',
+        )
+      }
+    } catch (error) {
+      console.warn(
+        '[ProfileSync] Cloud save failed; profile was saved locally:',
+        error instanceof Error ? error.message : 'Unexpected profile save error.',
+      )
     }
   }
 }
 
-export async function resetUserProfile(): Promise<UserProfile> {
-  await AsyncStorage.removeItem(USER_PROFILE_KEY)
-  return defaultUserProfile
+export async function resetUserProfile(user?: User | null): Promise<UserProfile> {
+  await ensureProfileScopeMigration()
+  await AsyncStorage.removeItem(getUserProfileKey(user))
+  return { ...defaultUserProfile }
 }
 

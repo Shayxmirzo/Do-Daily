@@ -57,79 +57,127 @@ function mapRowToTask(row: SupabaseTaskRow): Task {
   }
 }
 
+function mergeTasks(remoteTasks: Task[], localTasks: Task[]): Task[] {
+  const tasksById = new Map(remoteTasks.map((task) => [task.id, task]))
+  for (const task of localTasks) {
+    tasksById.set(task.id, task)
+  }
+  return Array.from(tasksById.values())
+}
+
 export function TaskProvider({ children }: PropsWithChildren) {
   const { user } = useAuth()
+  const userId = user?.id ?? null
+  const activeUserIdRef = useRef(userId)
   const [tasks, setTasks] = useState<Task[]>([])
+  const [tasksUserId, setTasksUserId] = useState<string | null | undefined>(
+    undefined,
+  )
   const [loading, setLoading] = useState(true)
-  const [storageError, setStorageError] = useState<string | null>(null)
-  const tasksRef = useRef<Task[]>([])
-  const loadedRef = useRef(false)
+  const [storageErrorState, setStorageErrorState] = useState<{
+    ownerId: string | null
+    message: string
+  } | null>(null)
+  const storageError =
+    storageErrorState?.ownerId === userId ? storageErrorState.message : null
+  const loadedUserIdRef = useRef<string | null | undefined>(undefined)
   const mutationQueueRef = useRef<Promise<void>>(Promise.resolve())
 
-  const persistTasks = useCallback(async (updatedTasks: Task[]) => {
-    await saveTasks(updatedTasks)
-    tasksRef.current = updatedTasks
-    setTasks(updatedTasks)
-    setStorageError(null)
-  }, [])
+  const persistTasks = useCallback(
+    async (updatedTasks: Task[], ownerId: string | null) => {
+      await saveTasks(updatedTasks, ownerId)
+      if (activeUserIdRef.current === ownerId) {
+        setTasks(updatedTasks)
+        setTasksUserId(ownerId)
+        setStorageErrorState(null)
+      }
+    },
+    [],
+  )
+
+  const enqueueMutation = useCallback(
+    <T,>(ownerId: string | null, mutation: () => Promise<T>) => {
+      if (loadedUserIdRef.current !== ownerId) {
+        return Promise.reject(
+          new Error('Tasks are still loading or could not be loaded.'),
+        )
+      }
+
+      const result = mutationQueueRef.current.then(mutation)
+      mutationQueueRef.current = result.then(
+        () => undefined,
+        () => undefined,
+      )
+      return result
+    },
+    [],
+  )
 
   const refreshTasks = useCallback(async () => {
     try {
-      const local = await loadTasks()
-      tasksRef.current = local
-      setTasks(local)
+      await enqueueMutation(userId, async () => {
+        const local = await loadTasks(userId)
+        await persistTasks(local, userId)
+      })
 
-      if (user) {
+      if (userId) {
         const { data, error } = await supabase
           .from('tasks')
           .select('*')
-          .eq('user_id', user.id)
+          .eq('user_id', userId)
           .order('start_at', { ascending: true })
 
         if (error) {
           console.warn('[TaskSync] Supabase fetch error:', error.message)
         } else if (data) {
           const remoteTasks = (data as SupabaseTaskRow[]).map(mapRowToTask)
-          tasksRef.current = remoteTasks
-          setTasks(remoteTasks)
-          await saveTasks(remoteTasks)
+          await enqueueMutation(userId, async () => {
+            const local = await loadTasks(userId)
+            await persistTasks(mergeTasks(remoteTasks, local), userId)
+          })
         }
       }
     } catch (error) {
-      setStorageError(errorMessage(error))
+      setStorageErrorState({ ownerId: userId, message: errorMessage(error) })
     }
-  }, [user])
+  }, [enqueueMutation, persistTasks, userId])
 
   useEffect(() => {
     let active = true
+    const ownerId = userId
+    activeUserIdRef.current = ownerId
+    loadedUserIdRef.current = undefined
 
-    loadTasks()
+    loadTasks(ownerId)
       .then(async (local) => {
         if (!active) return
-        tasksRef.current = local
         setTasks(local)
-        loadedRef.current = true
+        setTasksUserId(ownerId)
+        loadedUserIdRef.current = ownerId
 
-        if (user) {
+        if (ownerId) {
           const { data, error } = await supabase
             .from('tasks')
             .select('*')
-            .eq('user_id', user.id)
+            .eq('user_id', ownerId)
             .order('start_at', { ascending: true })
 
           if (error) {
             console.warn('[TaskSync] Supabase fetch error:', error.message)
           } else if (data && active) {
             const remoteTasks = (data as SupabaseTaskRow[]).map(mapRowToTask)
-            tasksRef.current = remoteTasks
-            setTasks(remoteTasks)
-            await saveTasks(remoteTasks)
+            await enqueueMutation(ownerId, async () => {
+              if (!active) return
+              const latestLocal = await loadTasks(ownerId)
+              await persistTasks(mergeTasks(remoteTasks, latestLocal), ownerId)
+            })
           }
         }
       })
       .catch((error: unknown) => {
         if (active) {
-          setStorageError(errorMessage(error))
+          setTasksUserId(ownerId)
+          setStorageErrorState({ ownerId, message: errorMessage(error) })
         }
       })
       .finally(() => {
@@ -141,34 +189,26 @@ export function TaskProvider({ children }: PropsWithChildren) {
     return () => {
       active = false
     }
-  }, [user])
-
-  const enqueueMutation = useCallback(<T,>(mutation: () => Promise<T>) => {
-    if (!loadedRef.current) {
-      return Promise.reject(
-        new Error('Tasks are still loading or could not be loaded.'),
-      )
-    }
-
-    const result = mutationQueueRef.current.then(mutation)
-    mutationQueueRef.current = result.then(
-      () => undefined,
-      () => undefined,
-    )
-    return result
-  }, [])
+  }, [enqueueMutation, persistTasks, userId])
 
   const addTask = useCallback(
     async (input: NewTask) => {
       try {
-        let task: Task
+        const task = createTaskRecord(input)
+        await enqueueMutation(userId, async () => {
+          const local = await loadTasks(userId)
+          await persistTasks([...local, task], userId)
+        })
 
-        if (user) {
-          // Cloud save with Supabase
-          const { data, error } = await supabase
+        if (!userId) return task
+
+        let data: SupabaseTaskRow | null
+        let error: { message: string } | null
+        try {
+          const result = await supabase
             .from('tasks')
             .insert({
-              user_id: user.id,
+              user_id: userId,
               title: input.title,
               description: input.description,
               category: input.category,
@@ -179,34 +219,70 @@ export function TaskProvider({ children }: PropsWithChildren) {
             })
             .select()
             .single()
-
-          if (error || !data) {
-            throw new Error(error?.message || 'Не удалось сохранить задачу в облаке.')
-          }
-
-          task = mapRowToTask(data as SupabaseTaskRow)
-        } else {
-          // Local offline task
-          task = createTaskRecord(input)
+          data = result.data as SupabaseTaskRow | null
+          error = result.error
+        } catch (cloudError) {
+          console.warn(
+            '[TaskSync] Cloud insert failed; task was saved locally:',
+            errorMessage(cloudError),
+          )
+          return task
         }
 
-        await enqueueMutation(async () => {
-          await persistTasks([...tasksRef.current, task])
+        if (error || !data) {
+          console.warn(
+            '[TaskSync] Cloud insert failed; task was saved locally:',
+            error?.message || 'No task was returned.',
+          )
+          return task
+        }
+
+        const syncedTask = mapRowToTask(data)
+        await enqueueMutation(userId, async () => {
+          const local = await loadTasks(userId)
+          const currentTask = local.find(
+            (savedTask) => savedTask.id === task.id,
+          )
+          if (!currentTask) return
+
+          await persistTasks(
+            local.map((savedTask) =>
+              savedTask.id === task.id
+                ? { ...syncedTask, ...currentTask, id: syncedTask.id }
+                : savedTask,
+            ),
+            userId,
+          )
         })
 
-        return task
+        return syncedTask
       } catch (error) {
-        setStorageError(errorMessage(error))
+        setStorageErrorState({ ownerId: userId, message: errorMessage(error) })
         throw error
       }
     },
-    [user, enqueueMutation, persistTasks],
+    [userId, enqueueMutation, persistTasks],
   )
 
   const updateTask = useCallback(
     async (id: string, changes: Partial<Omit<Task, 'id'>>) => {
       try {
-        if (user) {
+        await enqueueMutation(userId, async () => {
+          const local = await loadTasks(userId)
+          const taskExists = local.some((task) => task.id === id)
+          if (!taskExists) {
+            throw new Error(`Task "${id}" was not found.`)
+          }
+
+          await persistTasks(
+            local.map((task) =>
+              task.id === id ? { ...task, ...changes } : task,
+            ),
+            userId,
+          )
+        })
+
+        if (userId) {
           const updatePayload: Record<string, unknown> = {}
           if (changes.title !== undefined) updatePayload.title = changes.title
           if (changes.description !== undefined) updatePayload.description = changes.description
@@ -216,70 +292,73 @@ export function TaskProvider({ children }: PropsWithChildren) {
           if (changes.startAt !== undefined) updatePayload.start_at = changes.startAt
           if (changes.endAt !== undefined) updatePayload.end_at = changes.endAt
 
-          const { error } = await supabase
-            .from('tasks')
-            .update(updatePayload)
-            .eq('id', id)
-            .eq('user_id', user.id)
-
-          if (error) {
-            console.warn('[TaskSync] Cloud update failed:', error.message)
+          try {
+            const { error } = await supabase
+              .from('tasks')
+              .update(updatePayload)
+              .eq('id', id)
+              .eq('user_id', userId)
+            if (error) {
+              console.warn('[TaskSync] Cloud update failed:', error.message)
+            }
+          } catch (error) {
+            console.warn(
+              '[TaskSync] Cloud update failed; task was saved locally:',
+              errorMessage(error),
+            )
           }
         }
-
-        await enqueueMutation(async () => {
-          const taskExists = tasksRef.current.some((task) => task.id === id)
-          if (!taskExists) {
-            throw new Error(`Task "${id}" was not found.`)
-          }
-
-          await persistTasks(
-            tasksRef.current.map((task) =>
-              task.id === id ? { ...task, ...changes } : task,
-            ),
-          )
-        })
       } catch (error) {
-        setStorageError(errorMessage(error))
+        setStorageErrorState({ ownerId: userId, message: errorMessage(error) })
         throw error
       }
     },
-    [user, enqueueMutation, persistTasks],
+    [userId, enqueueMutation, persistTasks],
   )
 
   const deleteTask = useCallback(
     async (id: string) => {
       try {
-        if (user) {
-          const { error } = await supabase
-            .from('tasks')
-            .delete()
-            .eq('id', id)
-            .eq('user_id', user.id)
-
-          if (error) {
-            console.warn('[TaskSync] Cloud delete failed:', error.message)
-          }
-        }
-
-        await enqueueMutation(async () => {
+        await enqueueMutation(userId, async () => {
+          const local = await loadTasks(userId)
           await persistTasks(
-            tasksRef.current.filter((task) => task.id !== id),
+            local.filter((task) => task.id !== id),
+            userId,
           )
         })
+
+        if (userId) {
+          try {
+            const { error } = await supabase
+              .from('tasks')
+              .delete()
+              .eq('id', id)
+              .eq('user_id', userId)
+            if (error) {
+              console.warn('[TaskSync] Cloud delete failed:', error.message)
+            }
+          } catch (error) {
+            console.warn(
+              '[TaskSync] Cloud delete failed; task was deleted locally:',
+              errorMessage(error),
+            )
+          }
+        }
       } catch (error) {
-        setStorageError(errorMessage(error))
+        setStorageErrorState({ ownerId: userId, message: errorMessage(error) })
         throw error
       }
     },
-    [user, enqueueMutation, persistTasks],
+    [userId, enqueueMutation, persistTasks],
   )
+
+  const visibleTasks = tasksUserId === userId ? tasks : []
 
   return (
     <TaskContext.Provider
       value={{
-        tasks,
-        loading,
+        tasks: visibleTasks,
+        loading: loading || tasksUserId !== userId,
         storageError,
         addTask,
         updateTask,
