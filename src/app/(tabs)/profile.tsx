@@ -1,9 +1,11 @@
 import Ionicons from '@expo/vector-icons/Ionicons'
+
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import {
   Alert,
   Modal,
   Pressable,
+  RefreshControl,
   ScrollView,
   StatusBar,
   StyleSheet,
@@ -13,6 +15,7 @@ import {
   View,
 } from 'react-native'
 import { SafeAreaView } from 'react-native-safe-area-context'
+import { AppLogo } from '../../components/app-logo'
 import { useAuth } from '../../context/auth-context'
 import { useTasks } from '../../context/task-context'
 import {
@@ -26,23 +29,27 @@ import { router, type Href } from 'expo-router'
 const avatarPresets = ['⚡', '🚀', '🎯', '🦁', '🌟', '🎨', '🧠', '🏆', '☕', '🔥']
 
 export default function ProfileScreen() {
-  const { user, loading: authLoading, signOut } = useAuth()
-  const userId = user?.id
-  const { tasks, loading: tasksLoading, storageError, deleteTask } = useTasks()
-  const [profileState, setProfileState] = useState<{
-    userId: string | null
-    profile: UserProfile
-  } | null>(null)
-  const profile =
-    profileState?.userId === (userId ?? null)
-      ? profileState.profile
-      : defaultUserProfile
-  const isProfileLoading =
-    authLoading || profileState?.userId !== (userId ?? null)
+  const { user, signOut } = useAuth()
+  const { tasks, loading: tasksLoading, storageError, deleteTask, refreshTasks } = useTasks()
+  const [profile, setProfile] = useState<UserProfile>(defaultUserProfile)
+  const [isProfileLoading, setIsProfileLoading] = useState(true)
   const [isSavingProfile, setIsSavingProfile] = useState(false)
+  const [refreshing, setRefreshing] = useState(false)
   const [isEditModalOpen, setIsEditModalOpen] = useState(false)
   const [isAboutModalOpen, setIsAboutModalOpen] = useState(false)
   const profileSaveInProgressRef = useRef(false)
+
+  const onRefresh = useCallback(async () => {
+    setRefreshing(true)
+    try {
+      await Promise.all([
+        refreshTasks(),
+        loadUserProfile(user).then((loaded) => setProfile(loaded)),
+      ])
+    } finally {
+      setRefreshing(false)
+    }
+  }, [refreshTasks, user])
 
   // Edit form state
   const [draftName, setDraftName] = useState('')
@@ -54,35 +61,31 @@ export default function ProfileScreen() {
   useEffect(() => {
     let active = true
 
-    if (authLoading) {
-      return () => {
-        active = false
-      }
-    }
-
-    loadUserProfile(userId)
+    loadUserProfile(user)
       .then((loaded) => {
         if (active) {
-          setProfileState({ userId: userId ?? null, profile: loaded })
+          setProfile(loaded)
         }
       })
       .catch((error: unknown) => {
         if (active) {
-          setProfileState({
-            userId: userId ?? null,
-            profile: defaultUserProfile,
-          })
+          setProfile(defaultUserProfile)
           Alert.alert(
             'Не удалось загрузить профиль',
             error instanceof Error ? error.message : 'Произошла ошибка хранилища.',
           )
         }
       })
+      .finally(() => {
+        if (active) {
+          setIsProfileLoading(false)
+        }
+      })
 
     return () => {
       active = false
     }
-  }, [authLoading, userId])
+  }, [user])
 
   // User statistics based on tasks
   const completedTasks = useMemo(
@@ -171,25 +174,23 @@ export default function ProfileScreen() {
         return false
       }
 
-      profileSaveInProgressRef.current = true
-      setIsSavingProfile(true)
-      try {
-        await saveUserProfile(updated, userId)
-        setProfileState({ userId: userId ?? null, profile: updated })
-        return true
-      } catch (error) {
-        Alert.alert(
-          'Не удалось сохранить профиль',
-          error instanceof Error ? error.message : 'Произошла ошибка хранилища.',
-        )
-        return false
-      } finally {
-        profileSaveInProgressRef.current = false
-        setIsSavingProfile(false)
-      }
-    },
-    [userId],
-  )
+    profileSaveInProgressRef.current = true
+    setIsSavingProfile(true)
+    try {
+      await saveUserProfile(updated, user)
+      setProfile(updated)
+      return true
+    } catch (error) {
+      Alert.alert(
+        'Не удалось сохранить профиль',
+        error instanceof Error ? error.message : 'Произошла ошибка хранилища.',
+      )
+      return false
+    } finally {
+      profileSaveInProgressRef.current = false
+      setIsSavingProfile(false)
+    }
+  }, [user])
 
   // Save updated profile
   const handleSaveProfile = async () => {
@@ -338,6 +339,14 @@ export default function ProfileScreen() {
       <StatusBar barStyle="dark-content" />
       <ScrollView
         showsVerticalScrollIndicator={false}
+        refreshControl={
+          <RefreshControl
+            refreshing={refreshing}
+            onRefresh={onRefresh}
+            colors={['#6C5DD3']}
+            tintColor="#6C5DD3"
+          />
+        }
         contentContainerStyle={styles.scrollContent}
       >
         {/* User Card Header */}
@@ -746,7 +755,7 @@ export default function ProfileScreen() {
           <View style={styles.aboutModalContent}>
             <View style={styles.aboutCenter}>
               <View style={styles.aboutAppIcon}>
-                <Ionicons name="checkbox" size={42} color="#6C5DD3" />
+                <AppLogo size={60} />
               </View>
               <Text style={styles.aboutAppName}>Do-Daily</Text>
               <Text style={styles.aboutVersion}>Версия 1.0.0 (Expo SDK 58)</Text>

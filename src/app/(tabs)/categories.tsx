@@ -2,9 +2,8 @@ import { useTasks } from '@/context/task-context'
 import type { TaskCategory, TaskPriority, TaskStatus } from '../../types/task'
 import Ionicons from "@expo/vector-icons/Ionicons"
 import { router, type Href } from "expo-router"
-import { SafeAreaView } from 'react-native-safe-area-context'
-import { Alert, Modal, Pressable, ScrollView, StatusBar, Text, View } from "react-native"
-import { useState } from 'react'
+import { Alert, Modal, Pressable, RefreshControl, SafeAreaView, ScrollView, StatusBar, Text, View } from "react-native"
+import { useCallback, useState } from 'react'
 
 type CategoryFilter = TaskCategory | 'all'
 type PriorityFilter = TaskPriority | 'all'
@@ -114,7 +113,18 @@ function Categories() {
   const [filtersVisible, setFiltersVisible] = useState(false)
   const [selectedCategory, setSelectedCategory] = useState<CategoryFilter>('all')
   const [selectedPriority, setSelectedPriority] = useState<PriorityFilter>('all')
-  const { tasks, loading, storageError, updateTask, deleteTask } = useTasks()
+  const [refreshing, setRefreshing] = useState(false)
+  const { tasks, loading, storageError, updateTask, deleteTask, refreshTasks } = useTasks()
+
+  const onRefresh = useCallback(async () => {
+    setRefreshing(true)
+    try {
+      await refreshTasks()
+    } finally {
+      setRefreshing(false)
+    }
+  }, [refreshTasks])
+
   const filteredTasks = tasks.filter(
     (task) =>
       (selectedCategory === 'all' || task.category === selectedCategory) &&
@@ -156,8 +166,18 @@ const handleDeleteTask = (id: string) => {
   return (
     <SafeAreaView style={{ flex: 1, backgroundColor: '#ffff' }}>
          <StatusBar barStyle="dark-content" />
-         <ScrollView showsVerticalScrollIndicator={false}
-        contentContainerStyle={{ padding: 20, gap: 24, paddingBottom: 110, position: 'relative' }}>
+         <ScrollView
+           showsVerticalScrollIndicator={false}
+           refreshControl={
+             <RefreshControl
+               refreshing={refreshing}
+               onRefresh={onRefresh}
+               colors={['#7357E8']}
+               tintColor="#7357E8"
+             />
+           }
+           contentContainerStyle={{ padding: 20, gap: 24, paddingBottom: 110, position: 'relative' }}
+         >
             <View style={{ paddingHorizontal: 0,paddingTop: 40, paddingVertical: 15, flexDirection: 'row', justifyContent: 'space-between', alignItems: "flex-end"}}>
             <Text style={{fontSize: 30, fontWeight: "bold"}}>Фильтры</Text>
             <Pressable

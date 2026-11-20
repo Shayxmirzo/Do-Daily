@@ -16,6 +16,7 @@ import {
   View,
 } from 'react-native'
 import { SafeAreaView } from 'react-native-safe-area-context'
+import { AppLogo } from '../../components/app-logo'
 import { useAuth } from '../../context/auth-context'
 
 export default function LoginScreen() {
@@ -56,7 +57,7 @@ export default function LoginScreen() {
           {/* Header */}
           <View style={styles.header}>
             <View style={styles.logoWrap}>
-              <Ionicons name="checkbox" size={32} color="#6C5DD3" />
+              <AppLogo size={52} />
             </View>
             <Text style={styles.title}>С возвращением!</Text>
             <Text style={styles.subtitle}>Войдите, чтобы синхронизировать ваши задачи</Text>

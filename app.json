@@ -4,24 +4,23 @@
     "slug": "do-Daily",
     "version": "1.0.0",
     "orientation": "portrait",
-    "icon": "./assets/images/Do-daily logo.jpg",
+    "icon": "./assets/Глянцевый календарь с галочкой.png",
     "scheme": "dodaily",
     "userInterfaceStyle": "automatic",
     "ios": {
-      "icon": "./assets/images/Do-daily logo.jpg"
+      "icon": "./assets/Глянцевый календарь с галочкой.png"
     },
     "android": {
+      "package": "com.dodaily.app",
       "adaptiveIcon": {
         "backgroundColor": "#E6F4FE",
-        "foregroundImage": "./assets/images/Do-daily logo.jpg",
-        "backgroundImage": "./assets/images/Do-daily logo.jpg",
-        "monochromeImage": "./assets/images/Do-daily logo.jpg"
+        "foregroundImage": "./assets/Глянцевый календарь с галочкой.png"
       },
       "predictiveBackGestureEnabled": false
     },
     "web": {
-      "output": "server",
-      "favicon": "./assets/images/Do-daily logo.jpg"
+      "output": "single",
+      "favicon": "./assets/Глянцевый календарь с галочкой.png"
     },
     "plugins": [
       "expo-router",
@@ -29,14 +28,26 @@
         "expo-splash-screen",
         {
           "backgroundColor": "#6C5DD3",
-          "image": "./assets/images/Do-daily logo.jpg",
-          "imageWidth": 90
+          "image": "./assets/Глянцевый календарь с галочкой.png",
+          "imageWidth": 140
         }
-      ]
+      ],
+      "expo-status-bar",
+      "expo-web-browser"
     ],
     "experiments": {
       "typedRoutes": true,
       "reactCompiler": true
+    },
+    "extra": {
+      "router": {
+        "asyncRoutes": {
+          "web": true
+        }
+      },
+      "eas": {
+        "projectId": "022d1f90-cf09-4610-ab7f-7b92355c8f49"
+      }
     }
   }
 }

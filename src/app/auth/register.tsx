@@ -16,6 +16,7 @@ import {
   View,
 } from 'react-native'
 import { SafeAreaView } from 'react-native-safe-area-context'
+import { AppLogo } from '../../components/app-logo'
 import { useAuth } from '../../context/auth-context'
 
 export default function RegisterScreen() {
@@ -70,6 +71,9 @@ export default function RegisterScreen() {
 
           {/* Header */}
           <View style={styles.header}>
+            <View style={styles.brandLogo}>
+              <AppLogo size={50} />
+            </View>
             <Text style={styles.title}>Создать аккаунт</Text>
             <Text style={styles.subtitle}>
               Начните вести задачи и ставить рекорды продуктивности
@@ -204,6 +208,15 @@ const styles = StyleSheet.create({
   },
   header: {
     gap: 6,
+  },
+  brandLogo: {
+    width: 62,
+    height: 62,
+    borderRadius: 20,
+    alignItems: 'center',
+    justifyContent: 'center',
+    backgroundColor: '#F0ECFF',
+    marginBottom: 8,
   },
   title: {
     fontSize: 28,

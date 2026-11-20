@@ -6,6 +6,7 @@ import * as SplashScreen from 'expo-splash-screen'
 import { StatusBar } from 'expo-status-bar'
 import { useCallback, useEffect, useState } from 'react'
 import { supabase } from '../api/supabase'
+import { AppLogo } from '../components/app-logo'
 import {
   Animated,
   Dimensions,
@@ -158,7 +159,7 @@ export default function SplashScreenComponent() {
               end={{ x: 1, y: 1 }}
               style={styles.logoGradient}
             >
-              <Ionicons name="checkbox" size={54} color="#6C5DD3" />
+              <AppLogo size={72} />
             </LinearGradient>
           </Animated.View>
         </View>

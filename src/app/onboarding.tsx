@@ -3,6 +3,7 @@ import AsyncStorage from '@react-native-async-storage/async-storage'
 import { LinearGradient } from 'expo-linear-gradient'
 import { router, type Href } from 'expo-router'
 import { useRef, useState } from 'react'
+import { AppLogo } from '../components/app-logo'
 import {
   Dimensions,
   FlatList,
@@ -245,7 +246,7 @@ export default function OnboardingScreen() {
       <View style={styles.topBar}>
         <View style={styles.brandRow}>
           <View style={styles.brandLogo}>
-            <Ionicons name="checkbox" size={20} color="#6C5DD3" />
+            <AppLogo size={30} />
           </View>
           <Text style={styles.brandText}>Do-Daily</Text>
         </View>
